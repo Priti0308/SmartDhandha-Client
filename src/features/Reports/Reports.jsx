@@ -1,174 +1,351 @@
-import React, { useState } from "react";
-import { FileText, Download, Calendar } from "lucide-react";
-import { motion } from "framer-motion";
-import { utils, writeFile } from "xlsx";
-import jsPDF from "jspdf";
-import "jspdf-autotable";
-import {
-  LineChart,
-  Line,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  BarChart,
-  Bar,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+import React, { useState, useEffect, useMemo } from 'react';
+import { get } from '../../services/inventoryService'; // Assuming the path is correct
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
-const Reports = () => {
-  const [transactions] = useState([
-    { id: 1, date: "2025-08-01", description: "Product Sale", type: "credit", amount: 12000, category: "Sales" },
-    { id: 2, date: "2025-08-02", description: "Raw Material Purchase", type: "debit", amount: 5000, category: "Purchase" },
-    { id: 3, date: "2025-08-05", description: "GST Paid", type: "debit", amount: 1500, category: "Tax" },
-    { id: 4, date: "2025-08-07", description: "Consultancy Income", type: "credit", amount: 8000, category: "Services" },
-  ]);
+// --- Helper Functions ---
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const firstDayOfMonthISO = () => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+const formatINR = (n) => (Number(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const totalIncome = transactions.filter(t => t.type === "credit").reduce((acc, t) => acc + t.amount, 0);
-  const totalExpense = transactions.filter(t => t.type === "debit").reduce((acc, t) => acc + t.amount, 0);
-  const netProfit = totalIncome - totalExpense;
-  const gstCollected = transactions.filter(t => t.category === "Tax").reduce((acc, t) => acc + t.amount, 0);
+// --- Child Components ---
 
-  // Export Excel
-  const exportExcel = () => {
-    const ws = utils.json_to_sheet(transactions);
-    const wb = utils.book_new();
-    utils.book_append_sheet(wb, ws, "Reports");
-    writeFile(wb, "reports.xlsx");
-  };
-
-  // Export PDF
-  const exportPDF = () => {
-    const doc = new jsPDF();
-    doc.text("Business Report", 14, 10);
-    doc.autoTable({
-      head: [["Date", "Description", "Type", "Amount", "Category"]],
-      body: transactions.map(t => [t.date, t.description, t.type, t.amount, t.category]),
-    });
-    doc.save("reports.pdf");
-  };
-
-  return (
-    <div className="min-h-screen bg-[#f8fafc]">
-      {/* Gradient Header */}
-      <div className="bg-gradient-to-r from-[#001B48] via-[#02457A] to-[#018ABE] p-8 text-white shadow-lg">
-        <h1 className="text-3xl font-bold">📊 Reports & Analytics</h1>
-        <p className="text-sm opacity-90">Track income, expenses, GST and profit insights</p>
-      </div>
-
-      <div className="p-6 space-y-8">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {[
-            { title: "Total Income", value: `₹${totalIncome}`, color: "bg-gradient-to-r from-green-400 to-green-600 text-white" },
-            { title: "Total Expense", value: `₹${totalExpense}`, color: "bg-gradient-to-r from-red-400 to-red-600 text-white" },
-            { title: "Net Profit", value: `₹${netProfit}`, color: "bg-gradient-to-r from-blue-400 to-blue-600 text-white" },
-            { title: "GST Collected", value: `₹${gstCollected}`, color: "bg-gradient-to-r from-yellow-300 to-yellow-500 text-[#001B48]" },
-          ].map((card, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.2 }}
-              className={`p-6 rounded-xl shadow-lg ${card.color}`}
-            >
-              <h2 className="text-lg font-semibold">{card.title}</h2>
-              <p className="text-2xl font-bold">{card.value}</p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Filter & Export */}
-        <div className="flex flex-wrap items-center justify-between bg-white p-4 rounded-xl shadow-lg">
-          <div className="flex items-center gap-2">
-            <Calendar className="text-[#018ABE]" />
-            <input type="date" className="border rounded-lg px-3 py-1" />
-            <span>-</span>
-            <input type="date" className="border rounded-lg px-3 py-1" />
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={exportExcel}
-              className="px-4 py-2 bg-gradient-to-r from-[#02457A] to-[#018ABE] text-white rounded-lg flex items-center gap-2"
-            >
-              <Download size={18} /> Excel
-            </button>
-            <button
-              onClick={exportPDF}
-              className="px-4 py-2 bg-gradient-to-r from-[#001B48] to-[#02457A] text-white rounded-lg flex items-center gap-2"
-            >
-              <FileText size={18} /> PDF
-            </button>
-          </div>
-        </div>
-
-        {/* Reports Table */}
-        <div className="bg-white p-6 rounded-xl shadow-lg">
-          <h2 className="text-xl font-bold text-[#001B48] mb-4">📑 Transactions</h2>
-          <table className="w-full text-left border rounded-lg overflow-hidden">
-            <thead className="bg-gradient-to-r from-[#02457A] to-[#018ABE] text-white">
-              <tr>
-                <th className="p-2">Date</th>
-                <th className="p-2">Description</th>
-                <th className="p-2">Type</th>
-                <th className="p-2">Amount</th>
-                <th className="p-2">Category</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.map((t) => (
-                <tr
-                  key={t.id}
-                  className={`${
-                    t.type === "credit" ? "bg-green-50" : "bg-red-50"
-                  } border-b hover:bg-gray-50`}
-                >
-                  <td className="p-2">{t.date}</td>
-                  <td className="p-2">{t.description}</td>
-                  <td className="p-2 capitalize">{t.type}</td>
-                  <td className="p-2">₹{t.amount}</td>
-                  <td className="p-2">{t.category}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Income vs Expense Line Chart */}
-          <div className="bg-white p-6 rounded-xl shadow-lg">
-            <h2 className="text-lg font-bold text-[#001B48] mb-4">📈 Income vs Expense</h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={transactions}>
-                <Line type="monotone" dataKey="amount" stroke="#018ABE" strokeWidth={2} />
-                <CartesianGrid stroke="#97CADB" strokeDasharray="5 5" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Category-wise Bar Chart */}
-          <div className="bg-white p-6 rounded-xl shadow-lg">
-            <h2 className="text-lg font-bold text-[#001B48] mb-4">📊 Category-wise Report</h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={transactions}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="amount" fill="#02457A" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+// KPI Card for displaying key numbers
+const KPI = ({ title, value, color = 'text-blue-600' }) => (
+    <div className="bg-white rounded-xl shadow-md p-4">
+        <h3 className="text-sm text-gray-500 uppercase font-semibold">{title}</h3>
+        <p className={`text-2xl font-bold ${color}`}>{value}</p>
     </div>
-  );
+);
+
+// Main Reports Page Component
+const Reports = () => {
+    // --- State Management ---
+    const [invoices, setInvoices] = useState([]);
+    const [products, setProducts] = useState([]);
+    const [cashflows, setCashflows] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [activeReport, setActiveReport] = useState('p&l'); // Default to Profit & Loss
+    const [dateFilter, setDateFilter] = useState({
+        from: firstDayOfMonthISO(),
+        to: todayISO(),
+    });
+
+    // --- Data Fetching ---
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setLoading(true);
+                const [invoicesData, productsData, cashflowsData] = await Promise.all([
+                    get('invoices'),
+                    get('products'),
+                    get('cashflows'),
+                ]);
+                setInvoices(invoicesData);
+                setProducts(productsData);
+                setCashflows(cashflowsData);
+            } catch (err) {
+                toast.error('Failed to fetch report data.');
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+    
+    // --- Memoized Data Filtering ---
+    const filteredData = useMemo(() => {
+        const { from, to } = dateFilter;
+        if (!from || !to) {
+            return { sales: [], purchases: [], expenses: [] };
+        }
+        
+        const sales = invoices.filter(i => i.type === 'sale' && i.date >= from && i.date <= to);
+        const purchases = invoices.filter(i => i.type === 'purchase' && i.date >= from && i.date <= to);
+        // Expenses are cashflow entries of kind 'expense' but NOT 'Product Purchase'
+        const expenses = cashflows.filter(c => 
+            c.kind === 'expense' && 
+            c.category !== 'Product Purchase' && 
+            c.date >= from && 
+            c.date <= to
+        );
+        
+        return { sales, purchases, expenses };
+    }, [invoices, cashflows, dateFilter]);
+
+    if (loading) {
+        return <div className="min-h-screen flex items-center justify-center text-gray-500">Generating Reports...</div>;
+    }
+
+    const renderReport = () => {
+        switch (activeReport) {
+            case 'sales': return <SalesReport sales={filteredData.sales} products={products} />;
+            case 'purchases': return <PurchaseReport purchases={filteredData.purchases} />;
+            case 'stock': return <StockReport products={products} />;
+            case 'gst': return <GstReport sales={filteredData.sales} purchases={filteredData.purchases} />;
+            case 'p&l':
+            default:
+                return <ProfitAndLossStatement data={filteredData} />;
+        }
+    };
+    
+    return (
+        <>
+            <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} />
+            <div className="min-h-screen bg-gray-50">
+                {/* Top Bar */}
+                <div className="bg-gradient-to-r from-[#003B6F] via-[#0066A3] to-[#66B2FF] text-white">
+                    <div className="max-w-7xl mx-auto px-6 py-6">
+                        <h1 className="text-2xl font-semibold tracking-wide">Business Reports</h1>
+                        <p className="text-white/80 text-sm">Insights into your Sales, Stock, and Profitability</p>
+                    </div>
+                </div>
+
+                {/* Main Content */}
+                <div className="max-w-7xl mx-auto px-6 py-8">
+                    <div className="bg-white rounded-2xl shadow p-4 mb-6">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                            {/* Report Tabs */}
+                            <div className="flex flex-wrap gap-2">
+                                {['p&l', 'sales', 'purchases', 'stock', 'gst'].map(reportKey => (
+                                    <button
+                                        key={reportKey}
+                                        onClick={() => setActiveReport(reportKey)}
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeReport === reportKey ? 'bg-[#003B6F] text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                    >
+                                        { { 'p&l': 'Profit & Loss', 'sales': 'Sales', 'purchases': 'Purchases', 'stock': 'Stock', 'gst': 'GST' }[reportKey] }
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Date Filter */}
+                            {['p&l', 'sales', 'purchases', 'gst'].includes(activeReport) && (
+                                <div className="flex items-center gap-2 text-sm">
+                                    <label>From:</label>
+                                    <input type="date" value={dateFilter.from} onChange={e => setDateFilter({...dateFilter, from: e.target.value})} className="border rounded-lg px-2 py-1" />
+                                    <label>To:</label>
+                                    <input type="date" value={dateFilter.to} onChange={e => setDateFilter({...dateFilter, to: e.target.value})} className="border rounded-lg px-2 py-1" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Render the active report component */}
+                    {renderReport()}
+                </div>
+            </div>
+        </>
+    );
+};
+
+
+// --- Report Specific Components ---
+
+const SalesReport = ({ sales, products }) => {
+    const totalSales = sales.reduce((sum, inv) => sum + inv.totalGrand, 0);
+    const totalGst = sales.reduce((sum, inv) => sum + inv.totalGST, 0);
+
+    const topSellingProducts = useMemo(() => {
+        const productCount = {};
+        sales.forEach(inv => {
+            inv.items.forEach(item => {
+                productCount[item.productId] = (productCount[item.productId] || 0) + item.qty;
+            });
+        });
+
+        return Object.entries(productCount)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5) // Top 5 products
+            .map(([productId, qty]) => ({
+                name: products.find(p => p._id === productId)?.name || 'Unknown Product',
+                qty,
+            }));
+    }, [sales, products]);
+
+    return (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <KPI title="Total Sales" value={`₹ ${formatINR(totalSales)}`} />
+                <KPI title="Total GST Collected" value={`₹ ${formatINR(totalGst)}`} />
+                <div className="bg-white rounded-xl shadow-md p-4">
+                    <h3 className="text-sm text-gray-500 uppercase font-semibold">Top Selling Products</h3>
+                    {topSellingProducts.length > 0 ? (
+                        <ol className="text-sm list-decimal list-inside mt-2 space-y-1">
+                            {topSellingProducts.map(p => <li key={p.name}><strong>{p.name}</strong> ({p.qty} units)</li>)}
+                        </ol>
+                    ) : <p className="text-sm text-gray-400 mt-2">No sales data in this period.</p>}
+                </div>
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow-md">
+                <h3 className="font-semibold mb-2">Invoices in this Period</h3>
+                <div className="overflow-y-auto max-h-96">
+                    <table className="min-w-full text-xs">
+                        {/* Table similar to 'All Invoices' tab */}
+                        <thead className="bg-gray-100 sticky top-0">
+                            <tr>
+                                <th className="px-3 py-2 font-medium">Date</th>
+                                <th className="px-3 py-2 font-medium">Customer</th>
+                                <th className="px-3 py-2 font-medium text-right">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sales.map(inv => (
+                                <tr key={inv._id} className="border-t">
+                                    <td className="px-3 py-2">{inv.date}</td>
+                                    <td className="px-3 py-2">{inv.customerName}</td>
+                                    <td className="px-3 py-2 text-right font-semibold">₹ {formatINR(inv.totalGrand)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const PurchaseReport = ({ purchases }) => {
+    const totalPurchases = purchases.reduce((sum, inv) => sum + inv.totalGrand, 0);
+    const totalGst = purchases.reduce((sum, inv) => sum + inv.totalGST, 0);
+    
+    return (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <KPI title="Total Purchases" value={`₹ ${formatINR(totalPurchases)}`} color="text-red-600" />
+                <KPI title="Total GST Paid (ITC)" value={`₹ ${formatINR(totalGst)}`} color="text-orange-500" />
+            </div>
+             <div className="bg-white p-4 rounded-xl shadow-md">
+                <h3 className="font-semibold mb-2">Purchase Bills in this Period</h3>
+                <div className="overflow-y-auto max-h-96">
+                    <table className="min-w-full text-xs">
+                        <thead className="bg-gray-100 sticky top-0">
+                            <tr>
+                                <th className="px-3 py-2 font-medium">Date</th>
+                                <th className="px-3 py-2 font-medium">Supplier</th>
+                                <th className="px-3 py-2 font-medium text-right">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {purchases.map(inv => (
+                                <tr key={inv._id} className="border-t">
+                                    <td className="px-3 py-2">{inv.date}</td>
+                                    <td className="px-3 py-2">{inv.customerName}</td>
+                                    <td className="px-3 py-2 text-right font-semibold">₹ {formatINR(inv.totalGrand)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const StockReport = ({ products }) => {
+    const totalStockValue = products.reduce((sum, p) => sum + (p.stock * p.unitPrice), 0);
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-md">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Stock & Valuation Report</h3>
+                <KPI title="Total Stock Value" value={`₹ ${formatINR(totalStockValue)}`} />
+            </div>
+            <div className="overflow-y-auto max-h-[60vh]">
+                <table className="min-w-full text-sm">
+                    <thead className="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th className="px-3 py-2 font-medium text-left">Product Name</th>
+                            <th className="px-3 py-2 font-medium text-center">Current Stock</th>
+                            <th className="px-3 py-2 font-medium text-right">Unit Price</th>
+                            <th className="px-3 py-2 font-medium text-right">Stock Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {products.map(p => (
+                            <tr key={p._id} className="border-t">
+                                <td className="px-3 py-2 font-medium">{p.name}</td>
+                                <td className="px-3 py-2 text-center font-bold">{p.stock}</td>
+                                <td className="px-3 py-2 text-right">₹ {formatINR(p.unitPrice)}</td>
+                                <td className="px-3 py-2 text-right font-semibold text-blue-600">₹ {formatINR(p.stock * p.unitPrice)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
+const GstReport = ({ sales, purchases }) => {
+    const outputGst = sales.reduce((sum, inv) => sum + inv.totalGST, 0);
+    const inputGst = purchases.reduce((sum, inv) => sum + inv.totalGST, 0);
+    const netGst = outputGst - inputGst;
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-md max-w-md mx-auto">
+            <h3 className="text-lg font-semibold text-center mb-4">GST Summary</h3>
+            <div className="space-y-3">
+                <div className="flex justify-between text-base">
+                    <span className="text-gray-600">Output GST (on Sales)</span>
+                    <span className="font-semibold text-green-600">₹ {formatINR(outputGst)}</span>
+                </div>
+                <div className="flex justify-between text-base">
+                    <span className="text-gray-600">Input GST (on Purchases)</span>
+                    <span className="font-semibold text-red-600">- ₹ {formatINR(inputGst)}</span>
+                </div>
+                <div className="border-t pt-3 mt-3 flex justify-between text-lg font-bold">
+                    <span>Net GST Payable</span>
+                    <span className={netGst >= 0 ? 'text-blue-600' : 'text-orange-500'}>₹ {formatINR(netGst)}</span>
+                </div>
+                <p className="text-xs text-gray-500 text-center pt-2">
+                    {netGst >= 0 ? "This is the amount payable to the government." : "You have an Input Tax Credit (ITC) to claim."}
+                </p>
+            </div>
+        </div>
+    );
+};
+
+const ProfitAndLossStatement = ({ data }) => {
+    const { sales, purchases, expenses } = data;
+    const totalRevenue = sales.reduce((sum, inv) => sum + inv.totalGrand, 0);
+    const cogs = purchases.reduce((sum, inv) => sum + inv.totalGrand, 0);
+    const grossProfit = totalRevenue - cogs;
+    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const netProfit = grossProfit - totalExpenses;
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-md max-w-2xl mx-auto">
+            <h3 className="text-xl font-bold text-center text-[#003B6F] mb-4">Profit & Loss Statement</h3>
+            <div className="space-y-4 text-base">
+                {/* Revenue */}
+                <div className="flex justify-between">
+                    <span className="font-semibold">Total Revenue (Sales)</span>
+                    <span className="font-bold text-green-600">₹ {formatINR(totalRevenue)}</span>
+                </div>
+                {/* COGS */}
+                <div className="flex justify-between">
+                    <span className="font-semibold">Less: Cost of Goods Sold (Purchases)</span>
+                    <span className="font-bold text-red-600">- ₹ {formatINR(cogs)}</span>
+                </div>
+                {/* Gross Profit */}
+                <div className="border-t-2 border-b-2 py-2 my-2 flex justify-between font-bold text-lg">
+                    <span>Gross Profit</span>
+                    <span className={grossProfit >= 0 ? 'text-gray-800' : 'text-red-600'}>₹ {formatINR(grossProfit)}</span>
+                </div>
+                {/* Expenses */}
+                <div className="flex justify-between">
+                    <span className="font-semibold">Less: Operating Expenses</span>
+                    <span className="font-bold text-red-600">- ₹ {formatINR(totalExpenses)}</span>
+                </div>
+                {/* Net Profit */}
+                <div className="bg-blue-100 p-3 rounded-lg flex justify-between font-extrabold text-xl text-[#003B6F]">
+                    <span>Net Profit</span>
+                    <span className={netProfit >= 0 ? 'text-blue-700' : 'text-red-700'}>₹ {formatINR(netProfit)}</span>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default Reports;

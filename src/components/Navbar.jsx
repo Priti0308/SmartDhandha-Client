@@ -1,149 +1,106 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import { Menu, X, ChevronDown } from "lucide-react";
+// src/components/Navbar.jsx
 
-const Navbar = () => {
-  const [isOpen, setIsOpen] = useState(false); // mobile menu
-  const [dropdownOpen, setDropdownOpen] = useState(false); // features dropdown
+import React, { useState, useRef, useEffect } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { FiGrid, FiPackage, FiBookOpen, FiUsers, FiUserCheck, FiBarChart2, FiUser, FiLogOut, FiChevronDown } from 'react-icons/fi';
+import { toast } from 'react-toastify';
 
-  return (
-    <nav className="bg-gradient-to-r from-[#003B6F] via-[#0066A3] to-[#66B2FF] shadow-lg fixed w-full z-50">
-      <div className="container mx-auto px-6 py-3 flex justify-between items-center">
-        {/* Logo */}
-        <Link to="/" className="text-2xl font-bold text-white">
-          SmartDhandha
-        </Link>
+const Navbar = ({ businessName, userName, userEmail }) => {
+    const navigate = useNavigate();
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const dropdownRef = useRef(null);
 
-        {/* Desktop Menu */}
-        <div className="hidden md:flex items-center space-x-8 relative">
-          <Link to="/" className="text-white hover:text-[#A7E1FF] transition">
-            Home
-          </Link>
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setDropdownOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [dropdownRef]);
 
-          {/* Features with Dropdown */}
-          <div
-            className="relative"
-            onMouseEnter={() => setDropdownOpen(true)}
-            onMouseLeave={() => setDropdownOpen(false)}
-          >
-            <button className="flex items-center text-white hover:text-[#A7E1FF] transition">
-              Features <ChevronDown size={16} className="ml-1" />
-            </button>
-            {dropdownOpen && (
-              <div className="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg py-2 z-50">
-                <Link
-                  to="/inventory"
-                  className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-                >
-                  Inventory
-                </Link>
-                <Link
-                  to="/ledger"
-                  className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-                >
-                  Ledger
-                </Link>
-                <Link
-                  to="/report"
-                  className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-                >
-                  Report
-                </Link>
-                <Link
-                  to="/visitor"
-                  className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-                >
-                  Visitor
-                </Link>
-              </div>
-            )}
-          </div>
 
-          <Link to="/contact" className="block text-white hover:text-[#A7E1FF]">
-            Contact
-          </Link>
-          <Link to="/feedback" className="block text-white hover:text-[#A7E1FF]">
-            Feedback
-          </Link>
-        </div>
+    const handleLogout = () => {
+        setDropdownOpen(false);
+        toast.info("Logging you out...");
+        // Replace with your actual logout logic (e.g., clearing tokens)
+        setTimeout(() => navigate('/login'), 1500);
+    };
 
-        {/* Desktop Buttons */}
-        <div className="hidden md:flex space-x-4">
-          <Link
-            to="/login"
-            className="px-4 py-2 border border-white text-white rounded-md hover:bg-white hover:text-[#003B6F] transition"
-          >
-            Login
-          </Link>
-          <Link
-            to="/register"
-            className="px-4 py-2 bg-white text-[#003B6F] font-semibold rounded-md hover:bg-gray-100 transition"
-          >
-            Get Started
-          </Link>
-        </div>
+    const navItems = [
+        { to: "/", icon: <FiGrid />, label: "Dashboard" },
+        { to: "/inventory", icon: <FiPackage />, label: "Inventory" },
+        { to: "/ledger", icon: <FiBookOpen />, label: "Ledger" },
+        { to: "/customer", icon: <FiUsers />, label: "Customers" },
+        { to: "/visitor", icon: <FiUserCheck />, label: "Visitors" },
+        { to: "/report", icon: <FiBarChart2 />, label: "Reports" },
+    ];
 
-        {/* Mobile Menu Button */}
-        <div className="md:hidden flex items-center">
-          <button onClick={() => setIsOpen(!isOpen)}>
-            {isOpen ? <X size={24} color="white" /> : <Menu size={24} color="white" />}
-          </button>
-        </div>
-      </div>
+    const activeLinkStyle = {
+        color: '#00529B',
+        backgroundColor: '#E6F4FF'
+    };
 
-      {/* Mobile Menu */}
-      {isOpen && (
-        <div className="md:hidden bg-[#003B6F] px-6 pb-4 space-y-4">
-          <Link to="/" className="block text-white hover:text-[#A7E1FF]">
-            Home
-          </Link>
+    return (
+        <nav className="bg-white shadow-md sticky top-0 z-50">
+            <div className="max-w-screen-xl mx-auto px-4 sm:px-6">
+                <div className="flex justify-between items-center h-16">
+                    {/* Left Side: Business Name & Navigation */}
+                    <div className="flex items-center space-x-8">
+                        <h1 className="text-2xl font-bold text-slate-800">{businessName || 'My Business'}</h1>
+                        <div className="hidden md:flex items-center space-x-1">
+                            {navItems.map(item => (
+                                <NavLink
+                                    key={item.label}
+                                    to={item.to}
+                                    style={({ isActive }) => isActive ? activeLinkStyle : undefined}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                                >
+                                    {item.icon}
+                                    <span>{item.label}</span>
+                                </NavLink>
+                            ))}
+                        </div>
+                    </div>
 
-          {/* Mobile Dropdown */}
-          <div>
-            <button
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center w-full text-left text-white hover:text-[#A7E1FF] transition"
-            >
-              Features <ChevronDown size={16} className="ml-1" />
-            </button>
-            {dropdownOpen && (
-              <div className="mt-2 pl-4 space-y-2">
-                <Link to="/inventory" className="block text-white hover:text-[#A7E1FF]">
-                  Inventory
-                </Link>
-                <Link to="/ledger" className="block text-white hover:text-[#A7E1FF]">
-                  Ledger
-                </Link>
-                <Link to="/report" className="block text-white hover:text-[#A7E1FF]">
-                  Report
-                </Link>
-                <Link to="/visitor" className="block text-white hover:text-[#A7E1FF]">
-                  Visitor
-                </Link>
-              </div>
-            )}
-          </div>
+                    {/* Right Side: User Profile Dropdown */}
+                    <div className="relative" ref={dropdownRef}>
+                        <button
+                            onClick={() => setDropdownOpen(!dropdownOpen)}
+                            className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#00529B]"
+                        >
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#003B6F] to-[#007BFF] text-white font-bold flex items-center justify-center text-sm">
+                                {userName ? userName.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                            <span className="hidden lg:block font-semibold text-gray-700">{userName || 'User'}</span>
+                            <FiChevronDown className={`hidden lg:block h-5 w-5 text-gray-500 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
 
-          <Link to="/contact" className="block text-white hover:text-[#A7E1FF]">
-            Contact
-          </Link>
-          <Link to="/feedback" className="block text-white hover:text-[#A7E1FF]">
-            Feedback
-          </Link>
-         
-          <Link to="/login" className="block text-white hover:text-[#A7E1FF]">
-            Login
-          </Link>
-          <Link
-            to="/register"
-            className="block bg-white text-[#003B6F] rounded-md px-4 py-2 text-center hover:bg-gray-100 transition"
-          >
-            Get Started
-          </Link>
-        </div>
-      )}
-    </nav>
-  );
+                        {dropdownOpen && (
+                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl py-2 z-50 border border-gray-100 animate-fade-in-down">
+                                <div className="px-4 py-3 border-b border-gray-200">
+                                    <p className="font-semibold text-gray-800 text-sm">{userName || 'Business Owner'}</p>
+                                    <p className="text-xs text-gray-500 truncate">{userEmail || 'user@example.com'}</p>
+                                </div>
+                                <div className="py-1">
+                                    <NavLink to="/profile" onClick={() => setDropdownOpen(false)} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        <FiUser className="h-4 w-4" /> My Profile
+                                    </NavLink>
+                                </div>
+                                <div className="border-t border-gray-100 py-1">
+                                    <button onClick={handleLogout} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                                        <FiLogOut className="h-4 w-4" /> Logout
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </nav>
+    );
 };
 
 export default Navbar;

@@ -5,16 +5,17 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
-import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Contact from "./pages/Contact";
 import Feedback from "./pages/Feedback";
+import Profile from "./pages/Profile";
 
 import Inventory from "./features/Inventory/Inventory";
 import Ledger from "./features/Ledger/Ledger";
 import Report from "./features/Reports/Reports";
 import Visitor from "./features/Visitor/Visitor";
-
+import Customer from "./features/Customer/Customer";
+// import AuthContext from "./context/AuthContext";
 import PrivateRoute from "./router/PrivateRoute";
 
 function App() {
@@ -22,13 +23,15 @@ function App() {
     <Router>
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
+       <Route path="/" element={<Home />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/login" element={<Login />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/feedback" element={<Feedback/>} />
+        {/* <Route path="/auth/*" element={<AuthContext />} /> */}
 
         {/* Protected Routes */}
+       
         <Route
           path="/dashboard"
           element={
@@ -38,18 +41,27 @@ function App() {
           }
         />
         <Route
-          path="/settings"
+          path="/profile"
           element={
             <PrivateRoute>
-              <Settings />
+              <Profile />
             </PrivateRoute>
           }
         />
+
         <Route
           path="/inventory"
           element={
             <PrivateRoute>
               <Inventory />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/customer"
+          element={
+            <PrivateRoute>
+              <Customer />
             </PrivateRoute>
           }
         />

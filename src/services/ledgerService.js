@@ -1,134 +1,111 @@
-import axios from "axios";
+// This file handles all API calls for the ledger application.
+// It is configured to connect to a backend running on http://localhost:5000.
 
-const API = axios.create({
-  baseURL: "http://localhost:5000/api", // change when deploying
-});
+const API_BASE_URL = "http://localhost:5000/api";
 
-// Add auth token to requests
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem("vendorToken");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-    console.log("✅ Token attached:", token);
-  } else {
-    console.warn("⚠️ No token found in localStorage");
+/**
+ * Handles HTTP responses, checking for success and parsing JSON.
+ * @param {Response} response - The fetch API response object.
+ * @returns {Promise<any>} - A promise that resolves with the parsed JSON data.
+ * @throws {Error} If the response is not ok.
+ */
+const handleResponse = async (response) => {
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || `API call failed with status ${response.status}`);
   }
-  return config;
-});
-
-// -------- Ledger Entries --------
-const LEDGER_BASE = "/ledger";
-
-// Get all ledger entries
-export const getLedgerEntries = async () => {
-  const { data } = await API.get(`${LEDGER_BASE}/`);
-  return data;
+  return response.json();
 };
 
-// Get single ledger entry by ID
-export const getLedgerEntryById = async (id) => {
-  const { data } = await API.get(`${LEDGER_BASE}/${id}`);
-  return data;
+/**
+ * Fetches data from a specified endpoint.
+ * @param {string} endpoint - The API endpoint (e.g., 'customers', 'transactions').
+ * @returns {Promise<Array>} - A promise that resolves to the fetched data.
+ */
+export const get = async (endpoint) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/${endpoint}`);
+    return handleResponse(response);
+  } catch (error) {
+    console.error(`[API GET] Failed to fetch from ${endpoint}:`, error);
+    throw error;
+  }
 };
 
-// Add new ledger entry
-export const addLedgerEntry = async (entry) => {
-  const { data } = await API.post(`${LEDGER_BASE}/`, entry);
-  return data;
+/**
+ * Adds a new item to a specified endpoint using a POST request.
+ * @param {string} endpoint - The API endpoint.
+ * @param {object} item - The item to add.
+ * @returns {Promise<object>} - A promise that resolves to the newly created item.
+ */
+export const post = async (endpoint, item) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error(`[API POST] Failed to add to ${endpoint}:`, error);
+    throw error;
+  }
 };
 
-// Update ledger entry
-export const updateLedgerEntry = async (id, entry) => {
-  const { data } = await API.put(`${LEDGER_BASE}/${id}`, entry);
-  return data;
+/**
+ * Updates an existing item at a specified endpoint using a PUT request.
+ * @param {string} endpoint - The API endpoint.
+ * @param {object} updatedItem - The item with updated data.
+ * @returns {Promise<object>} - A promise that resolves to the updated item.
+ */
+export const put = async (endpoint, updatedItem) => {
+  try {
+    // Use `updatedItem._id` to match the data structure from your database
+    const response = await fetch(`${API_BASE_URL}/${endpoint}/${updatedItem._id}`, { // <-- Corrected line
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedItem),
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error(`[API PUT] Failed to update in ${endpoint}:`, error);
+    throw error;
+  }
 };
 
-// Delete ledger entry
-export const deleteLedgerEntry = async (id) => {
-  const { data } = await API.delete(`${LEDGER_BASE}/${id}`);
-  return data;
+/**
+ * Deletes an item from a specified endpoint using a DELETE request.
+ * @param {string} endpoint - The API endpoint.
+ * @param {string} id - The ID of the item to delete.
+ * @returns {Promise<object>} - A promise that resolves to the ID of the deleted item.
+ */
+export const deleteItem = async (endpoint, id) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/${endpoint}/${id}`, {
+      method: "DELETE",
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error(`[API DELETE] Failed to remove from ${endpoint}:`, error);
+    throw error;
+  }
 };
 
-// -------- Customers --------
-const CUSTOMER_BASE = "/customers";
+/* ---------------------- NEW: WhatsApp API Calls ---------------------- */
 
-// Get all customers
-export const getCustomers = async () => {
-  const { data } = await API.get(`${CUSTOMER_BASE}/`);
-  return data;
+/**
+ * Sends a specific reminder via WhatsApp.
+ * @param {string} reminderId - The ID of the reminder to send.
+ */
+export const sendWhatsappReminder = (reminderId) => {
+  return post(`reminders/${reminderId}/send-whatsapp`, {});
 };
 
-// Get single customer by ID
-export const getCustomerById = async (id) => {
-  const { data } = await API.get(`${CUSTOMER_BASE}/${id}`);
-  return data;
-};
-
-// Add new customer
-export const addCustomer = async (customer) => {
-  const { data } = await API.post(`${CUSTOMER_BASE}/`, customer);
-  return data;
-};
-
-// Update customer
-export const updateCustomer = async (id, customer) => {
-  const { data } = await API.put(`${CUSTOMER_BASE}/${id}`, customer);
-  return data;
-};
-
-// Delete customer
-export const deleteCustomer = async (id) => {
-  const { data } = await API.delete(`${CUSTOMER_BASE}/${id}`);
-  return data;
-};
-
-// -------- Reminders --------
-const REMINDER_BASE = "/reminders";
-
-// Get all reminders
-export const getReminders = async () => {
-  const { data } = await API.get(`${REMINDER_BASE}/`);
-  return data;
-};
-
-// Get reminders for a specific customer
-export const getRemindersByCustomer = async (customerId) => {
-  const { data } = await API.get(`${REMINDER_BASE}/customer/${customerId}`);
-  return data;
-};
-
-// Add new reminder
-export const addReminder = async (reminder) => {
-  const { data } = await API.post(`${REMINDER_BASE}/`, reminder);
-  return data;
-};
-
-// Update reminder
-export const updateReminder = async (id, reminder) => {
-  const { data } = await API.put(`${REMINDER_BASE}/${id}`, reminder);
-  return data;
-};
-
-// Delete reminder
-export const deleteReminder = async (id) => {
-  const { data } = await API.delete(`${REMINDER_BASE}/${id}`);
-  return data;
-};
-
-// -------- Combined Operations --------
-// Get customer with all related data
-export const getCustomerWithData = async (customerId) => {
-  const [customer, transactions, reminders] = await Promise.all([
-    getCustomerById(customerId),
-    getLedgerEntries().then(entries => entries.filter(entry => entry.customerId === customerId)),
-    getRemindersByCustomer(customerId)
-  ]);
-  
-  return { customer, transactions, reminders };
-};
-
-// Get all customers with their balance
-export const getCustomersWithBalance = async () => {
-  const { data } = await API.get('/customers/with-balance');
-  return data;
+/**
+ * Sends a custom message to a customer via WhatsApp.
+ * @param {string} customerId - The ID of the customer.
+ * @param {string} message - The message content.
+ */
+export const sendWhatsappOffer = (customerId, message) => {
+  return post(`customers/${customerId}/send-whatsapp-offer`, { message });
 };

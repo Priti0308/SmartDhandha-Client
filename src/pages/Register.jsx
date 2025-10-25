@@ -1,192 +1,247 @@
 import React, { useState, useEffect } from "react";
-import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
-import { registerUser } from "../services/authService";
+import { HiEye, HiEyeSlash } from "react-icons/hi2";
+import { useNavigate } from "react-router-dom";
+import { sendOtp, registerUser } from "../services/authService"; // Assuming your authService is correctly set up
 
 const Register = () => {
+  const navigate = useNavigate();
   const [otpSent, setOtpSent] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
-
-  // OTP timer state
   const [timeLeft, setTimeLeft] = useState(0);
+  const [formData, setFormData] = useState({
+    fullName: "",
+    businessName: "",
+    email: "",
+    mobile: "",
+    password: "",
+    confirmPassword: "",
+    otp: "",
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [passwordError, setPasswordError] = useState("");
 
-  const handleSendOTP = (e) => {
-    e.preventDefault();
-    // call sendOtp service
-    // on success: 
-    console.log("OTP sent to email",e.target); 
-    registerUser.handleSendOTP(e.email.value);
-    setOtpSent(true);
-    setTimeLeft(300); // 5 minutes = 300 seconds
-  };
-
-  // countdown effect
   useEffect(() => {
-    if (timeLeft <= 0) return;
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
-    }, 1000);
+    if (
+      formData.password &&
+      formData.confirmPassword &&
+      formData.password !== formData.confirmPassword
+    ) {
+      setPasswordError("Passwords do not match.");
+    } else {
+      setPasswordError("");
+    }
+  }, [formData.password, formData.confirmPassword]);
 
-    return () => clearInterval(timer);
+  useEffect(() => {
+    if (!timeLeft) return;
+    const interval = setInterval(() => setTimeLeft(timeLeft - 1), 1000);
+    return () => clearInterval(interval);
   }, [timeLeft]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const userData = Object.fromEntries(formData);
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
+  const handleSendOTP = async (e) => {
+    e.preventDefault();
+    if (isSendingOtp || !formData.email) return;
+    setIsSendingOtp(true);
+    setMessage(null);
     try {
-      const response = await registerUser(userData);
-      console.log("Registered:", response);
-      alert("Registration successful!");
+      await sendOtp(formData.email);
+      setMessage({
+        type: "success",
+        text: "OTP sent successfully to your email.",
+      });
+      setOtpSent(true);
+      setTimeLeft(120);
     } catch (err) {
-      console.error(err.response?.data || err.message);
-      alert("Registration failed");
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setIsSendingOtp(false);
     }
   };
 
-  // helper to format mm:ss
-  const formatTime = (seconds) => {
-    const m = String(Math.floor(seconds / 60)).padStart(2, "0");
-    const s = String(seconds % 60).padStart(2, "0");
-    return `${m}:${s}`;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (passwordError) {
+      setMessage({
+        type: "error",
+        text: "Please ensure your passwords match.",
+      });
+      return;
+    }
+    setIsLoading(true);
+    setMessage(null);
+    try {
+      const response = await registerUser(formData);
+      setMessage({
+        type: "success",
+        text: "Registration successful! Redirecting...",
+      });
+      localStorage.setItem("authToken", response.token);
+      setTimeout(() => navigate("/dashboard"), 2000);
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
+  const formatTime = (seconds) =>
+    `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(
+      seconds % 60
+    ).padStart(2, "0")}`;
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00264B] via-[#0173AE] to-[#B0D6E9] p-6">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8">
-        <h1 className="text-3xl font-bold text-[#00264B] text-center">SmartDhandha</h1>
-        <p className="text-gray-500 text-center mt-1">Create Your Account</p>
-
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          {/* Full Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Full Name</label>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00264B] via-[#0173AE] to-[#B0D6E9] p-4 font-sans">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h1 className="text-2xl font-bold text-[#00264B] text-center">
+          SmartDhandha
+        </h1>
+        <p className="text-sm text-gray-500 text-center mt-1">
+          Create Your Business Account
+        </p>
+        {message && (
+          <div
+            className={`rounded-lg p-3 text-sm my-4 text-center ${
+              message.type === "success"
+                ? "bg-green-100 text-green-800"
+                : "bg-red-100 text-red-800"
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+        <form className="mt-5 space-y-3" onSubmit={handleSubmit}>
+          {/* Form fields */}
+          <input
+            type="text"
+            name="fullName"
+            value={formData.fullName}
+            onChange={handleChange}
+            placeholder="Full Name"
+            required
+            className="mt-1 w-full border rounded-lg p-2 text-sm"
+          />
+          <input
+            type="text"
+            name="businessName"
+            value={formData.businessName}
+            onChange={handleChange}
+            placeholder="Business Name"
+            required
+            className="mt-1 w-full border rounded-lg p-2 text-sm"
+          />
+          <input
+            type="tel"
+            name="mobile"
+            value={formData.mobile}
+            onChange={handleChange}
+            placeholder="10-digit Mobile Number"
+            pattern="[0-9]{10}"
+            required
+            className="mt-1 w-full border rounded-lg p-2 text-sm"
+          />
+          <div className="relative">
             <input
-              type="text"
-              name="fullName"
-              placeholder="Enter full name"
+              type={passwordVisible ? "text" : "password"}
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Password"
               required
-              className="mt-1 w-full border rounded-lg p-2.5 focus:border-[#0173AE] focus:ring-[#0173AE]"
+              className="mt-1 w-full border rounded-lg p-2 text-sm"
             />
+            <button
+              type="button"
+              onClick={() => setPasswordVisible(!passwordVisible)}
+              className="absolute inset-y-0 right-3 flex items-center"
+            >
+              {passwordVisible ? <HiEyeSlash /> : <HiEye />}
+            </button>
           </div>
-
-          {/* Email + OTP */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Email</label>
-            <div className="flex gap-2">
-              <input
-                type="email"
-                name="email"
-                placeholder="Enter email"
-                required
-                className="mt-1 flex-1 border rounded-lg p-2.5 focus:border-[#0173AE] focus:ring-[#0173AE]"
-              />
-              <button
-                type="button"
-                onClick={handleSendOTP}
-                className="bg-gradient-to-r from-[#0173AE] to-[#66C6E6] text-white px-3 py-2 rounded-lg hover:opacity-90 transition"
-              >
-                {otpSent ? "Resend" : "Send OTP"}
-              </button>
-            </div>
+          <div className="relative">
+            <input
+              type={confirmPasswordVisible ? "text" : "password"}
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              placeholder="Confirm Password"
+              required
+              className="mt-1 w-full border rounded-lg p-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setConfirmPasswordVisible(!confirmPasswordVisible)}
+              className="absolute inset-y-0 right-3 flex items-center"
+            >
+              {confirmPasswordVisible ? <HiEyeSlash /> : <HiEye />}
+            </button>
           </div>
-
+          {passwordError && (
+            <p className="text-xs text-red-600 mt-1">{passwordError}</p>
+          )}
+          <div className="flex items-center gap-2">
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="Email for Verification"
+              required
+              className="mt-1 flex-1 border rounded-lg p-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={handleSendOTP}
+              disabled={isSendingOtp || timeLeft > 0 || !formData.email}
+              className="px-3 py-2 mt-1 text-sm font-semibold rounded-lg transition whitespace-nowrap bg-gray-200 disabled:cursor-not-allowed"
+            >
+              {isSendingOtp
+                ? "..."
+                : timeLeft > 0
+                ? `Resend (${formatTime(timeLeft)})`
+                : "Send OTP"}
+            </button>
+          </div>
           {otpSent && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Enter OTP</label>
+            <div className="space-y-1 pt-1">
               <input
                 type="text"
                 name="otp"
-                placeholder="Enter OTP"
+                value={formData.otp}
+                onChange={handleChange}
+                placeholder="6-digit OTP"
                 required
-                disabled={timeLeft === 0} // disable when expired
-                className="mt-1 w-full border rounded-lg p-2.5 focus:border-[#0173AE] focus:ring-[#0173AE] disabled:bg-gray-100"
+                className="w-full border rounded-lg p-2 text-sm"
+                disabled={!timeLeft}
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 text-right">
                 {timeLeft > 0
-                  ? `OTP valid for ${formatTime(timeLeft)}`
-                  : "OTP expired. Please resend."}
+                  ? `Expires in ${formatTime(timeLeft)}`
+                  : "OTP expired."}
               </p>
             </div>
           )}
-
-          {/* Mobile */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Mobile Number</label>
-            <input
-              type="tel"
-              name="mobile"
-              placeholder="Enter mobile number"
-              required
-              className="mt-1 w-full border rounded-lg p-2.5 focus:border-[#0173AE] focus:ring-[#0173AE]"
-            />
-          </div>
-
-          {/* Password */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Password</label>
-            <div className="relative">
-              <input
-                type={passwordVisible ? "text" : "password"}
-                name="password"
-                placeholder="Enter password"
-                required
-                className="mt-1 w-full border rounded-lg p-2.5 focus:border-[#0173AE] focus:ring-[#0173AE]"
-              />
-              <button
-                type="button"
-                onClick={() => setPasswordVisible(!passwordVisible)}
-                className="absolute inset-y-0 right-3 flex items-center text-gray-500"
-              >
-                {passwordVisible ? (
-                  <EyeSlashIcon className="h-5 w-5" />
-                ) : (
-                  <EyeIcon className="h-5 w-5" />
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Confirm Password */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
-            <div className="relative">
-              <input
-                type={confirmPasswordVisible ? "text" : "password"}
-                name="confirmPassword"
-                placeholder="Confirm password"
-                required
-                className="mt-1 w-full border rounded-lg p-2.5 focus:border-[#0173AE] focus:ring-[#0173AE]"
-              />
-              <button
-                type="button"
-                onClick={() => setConfirmPasswordVisible(!confirmPasswordVisible)}
-                className="absolute inset-y-0 right-3 flex items-center text-gray-500"
-              >
-                {confirmPasswordVisible ? (
-                  <EyeSlashIcon className="h-5 w-5" />
-                ) : (
-                  <EyeIcon className="h-5 w-5" />
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Submit */}
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-[#00264B] via-[#0173AE] to-[#66C6E6] text-white font-semibold py-2.5 rounded-lg shadow hover:opacity-90 transition"
+            disabled={isLoading || !otpSent || !!passwordError}
+            className="w-full bg-blue-600 text-white font-semibold py-2.5 rounded-lg shadow-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Register
+            Create Account
           </button>
         </form>
-
-        {/* Extra Link */}
-        <p className="mt-4 text-center text-sm text-gray-500">
+        <p className="mt-5 text-center text-xs text-gray-500">
           Already have an account?{" "}
-          <a href="/login" className="text-[#0173AE] hover:underline">
-            Login
+          <a
+            href="/login"
+            className="font-semibold text-blue-600 hover:underline"
+          >
+            Login Now
           </a>
         </p>
       </div>
