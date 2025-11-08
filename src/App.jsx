@@ -1,5 +1,6 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./context/AuthCntext";
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
@@ -9,6 +10,8 @@ import NotFound from "./pages/NotFound";
 import Contact from "./pages/Contact";
 import Feedback from "./pages/Feedback";
 import Profile from "./pages/Profile";
+
+
 
 import Inventory from "./features/Inventory/Inventory";
 import Ledger from "./features/Ledger/Ledger";
@@ -21,6 +24,7 @@ import PrivateRoute from "./router/PrivateRoute";
 function App() {
   return (
     <Router>
+      <AuthProvider>
       <Routes>
         {/* Public Routes */}
        <Route path="/" element={<Home />} />
@@ -93,6 +97,7 @@ function App() {
         {/* 404 Page */}
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </AuthProvider>
     </Router>
   );
 }
