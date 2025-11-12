@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-// 🚨 FIX: Corrected import path from "../services/profileService" to "./services/profileService" 
-// assuming the service file is either a sibling or one directory up from the execution context.
-// If this file is in 'src/components/Profile.jsx', the service is likely in 'src/services/profileService'
-// The simplest relative fix is to assume a closer path if the previous one failed.
 import * as profileService from "../services/profileService"; 
 import {
     UserCircleIcon, CreditCardIcon, CloudArrowUpIcon,
     TrashIcon, QuestionMarkCircleIcon, ArrowLeftOnRectangleIcon,
     ChevronRightIcon, PencilIcon, CameraIcon, InformationCircleIcon,
     ArrowTopRightOnSquareIcon, ChatBubbleBottomCenterTextIcon,
-    // --- 💎 ADDED ICONS ---
     BookOpenIcon, // For Help section (was missing)
     XMarkIcon, // For modal close button
     MapPinIcon, // For Address
@@ -129,7 +124,7 @@ const Profile = () => {
                 setFullName(data.fullName || '');
                 setMobile(data.mobile || '');
                 setEmail(data.email || '');
-                setBusinessName(data.businessName || 'SmartDhandha'); 
+                setBusinessName(data.businessName || ''); 
                 setAddress(data.address || ''); // 💎 ADDED: Set address
                 setProfileImagePreview(data.avatar || placeholder); 
             } catch (err) {

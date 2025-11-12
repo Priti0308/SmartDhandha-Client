@@ -1,16 +1,16 @@
-// src/pages/Login.jsx
 import React, { useState } from "react";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { loginUser } from "../services/authService";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthCntext"; // <-- This import now works!
+import { useAuth } from "../context/AuthContext"; 
+import { jwtDecode } from "jwt-decode"; // <-- 1. Import the new package
 
 const Login = () => {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState(null);
   const navigate = useNavigate();
-  const { login } = useAuth(); // <-- STEP 1: Get 'login' from context, NOT 'setAuth'
+  const { login } = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -23,17 +23,26 @@ const Login = () => {
     setMessage(null);
 
     try {
+      // 1. You log in and get the token
       const { user, token } = await loginUser(credentials);
       setMessage({ type: "success", text: "Login successful!" });
 
-      // STEP 2: Call the 'login' function from your context
-      // This will set the user, save the token, and update axios all at once
+      // 2. You save the user to your context
       login(user, token);
 
-      // STEP 3: Navigate
+      // --- THIS IS THE NEW, 100% RELIABLE FIX ---
+      // 3. We decode the token itself to find the role.
+      const decodedToken = jwtDecode(token);
+      const userRole = decodedToken.role; // Get role from the token
+
+      // 4. Navigate based on the role we just found
       setTimeout(() => {
-        navigate("/dashboard");
-      }, 1500);
+        if (userRole === 'superadmin') {
+          navigate("/superadmin"); // Go to superadmin page
+        } else {
+          navigate("/dashboard");  // Go to regular user page
+        }
+      }, 1500); // Wait 1.5 seconds
 
     } catch (err) {
       setMessage({

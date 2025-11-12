@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from "../context/AuthCntext"; // Or AuthCntext, whatever your file is
+import { useAuth } from "../context/AuthContext"; // Or AuthCntext, whatever your file is
 
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth(); // Get user AND loading state from context

@@ -531,18 +531,22 @@ const Ledger = () => {
               </div>
             </div>
 
+            {/* ---------- MODIFIED BALANCE BLOCK (AAPKO MILENGE / AAP DENGE) ---------- */}
             <div className="bg-white/10 backdrop-blur rounded-xl px-4 py-2 text-center">
-              <div className="text-xs uppercase tracking-wider opacity-80">Balance</div>
+              <div className="text-xs uppercase tracking-wider opacity-80">
+                {displayBal >= 0 ? "Aap Denge" : "Aapko Milenge"}
+              </div>
               <div className={`text-2xl font-bold ${displayBal >= 0 ? "text-green-200" : "text-red-200"}`}>
-                ₹ {formatINR(displayBal)}
+                ₹ {formatINR(Math.abs(displayBal))}
               </div>
             </div>
+            {/* ---------- END MODIFIED BLOCK ---------- */}
 
             <button
               onClick={openAddCustomer}
               className="rounded-xl px-4 py-2 bg-white text-[#003B6F] font-medium shadow hover:bg-[#A7E1FF] transition"
             >
-              + Add Customer
+              Add Customer
             </button>
           </div>
         </div>
@@ -836,12 +840,17 @@ const Ledger = () => {
             <h2 className="text-lg font-semibold text-gray-800 mb-4">All Customers</h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {customers.map((c) => {
+                
+                // ---------- MODIFIED CUSTOMER CARD LOGIC ----------
                 const bal = transactions
                   .filter((t) => t.customerId === c._id)
                   .reduce(
                     (acc, t) => acc + (t.type === "credit" ? Number(t.amount) : -Number(t.amount)),
                     0
                   );
+                const balLabel = bal >= 0 ? "Aap Denge" : "Aapko Milenge";
+                const balCls = bal >= 0 ? "text-green-600" : "text-red-600";
+                
                 return (
                   <div
                     key={c._id}
@@ -851,12 +860,16 @@ const Ledger = () => {
                   >
                     <div className="font-medium text-gray-800">{c.name}</div>
                     <div className="text-xs text-gray-500">{c.phone || "—"}</div>
-                    <div
-                      className={`mt-2 text-sm font-semibold ${bal >= 0 ? "text-green-600" : "text-red-600"
-                        }`}
-                    >
-                      ₹ {formatINR(bal)}
+                    
+                    <div className="mt-2">
+                      <div className={`text-lg font-semibold ${balCls}`}>
+                        ₹ {formatINR(Math.abs(bal))}
+                      </div>
+                      <div className={`text-xs font-medium ${balCls}`}>
+                        {balLabel}
+                      </div>
                     </div>
+                    
                     <div className="mt-3 pt-3 border-t flex justify-end">
                       <button
                         onClick={(e) => {
@@ -870,6 +883,7 @@ const Ledger = () => {
                     </div>
                   </div>
                 );
+                // ---------- END MODIFIED CUSTOMER CARD ----------
               })}
             </div>
           </div>

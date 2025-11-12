@@ -37,7 +37,7 @@ const Navbar = ({ businessName, userName, userEmail, avatar }) => {
     };
 
     const navItems = [
-        { to: "/", icon: <FiGrid />, label: "Dashboard" },
+        { to: "/dashboard", icon: <FiGrid />, label: "Dashboard" },
         { to: "/inventory", icon: <FiPackage />, label: "Inventory" },
         { to: "/ledger", icon: <FiBookOpen />, label: "Ledger" },
         { to: "/customer", icon: <FiUsers />, label: "Customers" },

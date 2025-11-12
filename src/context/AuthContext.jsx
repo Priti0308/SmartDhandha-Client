@@ -1,4 +1,4 @@
-// src/context/AuthContext.jsx
+
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 import { getToken, logoutUser as logoutFromService } from '../services/authService';
@@ -15,7 +15,7 @@ export const AuthProvider = ({ children }) => {
             if (token) {
                 axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
                 try {
-                    const { data } = await axios.get('https://smartbusiness-rr4o.onrender.com/api/profile/me');
+                    const { data } = await axios.get('https://smartbusiness-rr4o.onrender.com/api/profile');
                     setUser(data); 
                 } catch (error) {
                     console.error("Token verification failed:", error);
@@ -51,9 +51,6 @@ export const AuthProvider = ({ children }) => {
     );
 };
 
-// =======================================================
-// THE FIX IS HERE: Uncomment this function
-// =======================================================
 export const useAuth = () => {
     return useContext(AuthContext);
 };
