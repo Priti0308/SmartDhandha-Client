@@ -1,7 +1,7 @@
-
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
-import { getToken, logoutUser as logoutFromService } from '../services/authService';
+// Assuming authService.js has getToken and logoutUser
+import { getToken, logoutUser as logoutFromService } from '../services/authService'; 
 
 const AuthContext = createContext(null);
 
@@ -15,7 +15,9 @@ export const AuthProvider = ({ children }) => {
             if (token) {
                 axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
                 try {
-                    const { data } = await axios.get('https://smartbusiness-rr4o.onrender.com/api/profile');
+                    // --- THIS IS THE FIX ---
+                    // It must point to your local server for local testing
+                    const { data } = await axios.get('http://localhost:5000/api/profile');
                     setUser(data); 
                 } catch (error) {
                     console.error("Token verification failed:", error);
@@ -30,7 +32,7 @@ export const AuthProvider = ({ children }) => {
 
     // Function to be called from the Login/Register page
     const login = (userData, token) => {
-        localStorage.setItem('authToken', token);
+        // authService should handle token storage (e.g., localStorage)
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         setUser(userData);
     };
