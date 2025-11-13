@@ -39,12 +39,20 @@ const Navbar = () => {
         Feedback
       </Link>
       <Link
+        to="/help"
+        className="text-gray-600 hover:text-[#00528B] transition-colors duration-200 font-medium px-3 py-2 rounded-lg"
+        onClick={() => setIsMenuOpen(false)}
+      >
+        Help
+      </Link>
+      <Link
         to="/login"
         className="text-gray-600 hover:text-[#00528B] transition-colors duration-200 font-medium px-3 py-2 rounded-lg"
         onClick={() => setIsMenuOpen(false)}
       >
         Login
       </Link>
+      
       <Link
         to="/register"
         className="px-4 py-2 bg-[#00528B] text-white rounded-lg font-semibold hover:bg-[#003B6F] transition-colors duration-200"
@@ -333,7 +341,7 @@ const Home = () => {
             </div>
           </div>
           <div className="mt-12 pt-8 border-t border-gray-800 text-center text-sm">
-            <p>&copy; {new Date().getFullYear()} SmartDhandha. All Rights Reserved.</p>
+            <p>&copy; {new Date().getFullYear()} Prarambh Pvt.Ltd All Rights Reserved.</p>
           </div>
         </div>
       </footer>

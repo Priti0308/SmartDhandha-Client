@@ -12,6 +12,7 @@ const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
 
+
   const handleLogin = async (e) => {
     e.preventDefault();
     if (isLoading) return;
@@ -23,26 +24,22 @@ const Login = () => {
     setMessage(null);
 
     try {
-      // 1. You log in and get the token
       const { user, token } = await loginUser(credentials);
       setMessage({ type: "success", text: "Login successful!" });
-
-      // 2. You save the user to your context
       login(user, token);
 
-      // --- THIS IS THE NEW, 100% RELIABLE FIX ---
-      // 3. We decode the token itself to find the role.
+      // --- THIS IS THE FIX ---
       const decodedToken = jwtDecode(token);
-      const userRole = decodedToken.role; // Get role from the token
+      // Convert role to lowercase before checking
+      const userRole = decodedToken.role ? decodedToken.role.toLowerCase() : ''; 
 
-      // 4. Navigate based on the role we just found
       setTimeout(() => {
-        if (userRole === 'superadmin') {
-          navigate("/superadmin"); // Go to superadmin page
+        if (userRole === 'superadmin') { // Check against lowercase
+          navigate("/superadmin");
         } else {
-          navigate("/dashboard");  // Go to regular user page
+          navigate("/dashboard");
         }
-      }, 1500); // Wait 1.5 seconds
+      }, 1500); 
 
     } catch (err) {
       setMessage({
@@ -56,6 +53,7 @@ const Login = () => {
       setIsLoading(false);
     }
   };
+// ... rest of the file
 
   // ... (Your JSX remains exactly the same) ...
   return (

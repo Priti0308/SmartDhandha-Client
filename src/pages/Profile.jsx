@@ -5,16 +5,12 @@ import {
     TrashIcon, QuestionMarkCircleIcon, ArrowLeftOnRectangleIcon,
     ChevronRightIcon, PencilIcon, CameraIcon, InformationCircleIcon,
     ArrowTopRightOnSquareIcon, ChatBubbleBottomCenterTextIcon,
-    BookOpenIcon, // For Help section (was missing)
-    XMarkIcon, // For modal close button
-    MapPinIcon, // For Address
-    AtSymbolIcon, // For Email input
-    PhoneIcon, // For Mobile input
-    UserIcon, // For Name input
-    BuildingOffice2Icon // For Business Name input
+    BookOpenIcon, XMarkIcon, MapPinIcon, AtSymbolIcon, 
+    PhoneIcon, UserIcon, BuildingOffice2Icon, Bars3Icon // 💎 NEW: Bars3Icon for hamburger
 } from '@heroicons/react/24/outline';
+import { FiMenu } from 'react-icons/fi'; // 💎 NEW: Adding FiMenu (as fallback/simplicity)
 
-// --- 💎 NEW: Helper function for avatar initials ---
+// --- Helper function for avatar initials (from your code) ---
 const getInitials = (name) => {
     if (!name) return 'U';
     const names = name.split(' ');
@@ -22,8 +18,7 @@ const getInitials = (name) => {
     return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
 };
 
-// --- Reusable UI Components ---
-
+// --- Reusable UI Components (unchanged) ---
 const SettingsMenuItem = ({ icon: Icon, title, subtitle, active, onClick }) => (
     <button
         onClick={onClick}
@@ -42,7 +37,6 @@ const SettingsMenuItem = ({ icon: Icon, title, subtitle, active, onClick }) => (
     </button>
 );
 
-// --- 💎 NEW: Attractive Icon Input Field ---
 const IconInput = ({ icon: Icon, label, id, as = 'input', ...props }) => {
     const InputComponent = as;
     return (
@@ -56,7 +50,6 @@ const IconInput = ({ icon: Icon, label, id, as = 'input', ...props }) => {
                     id={id}
                     {...props}
                     className="w-full pl-10 border border-gray-300 rounded-lg p-3 text-sm focus:border-[#0173AE] focus:ring-1 focus:ring-[#0173AE] transition"
-                    // Add padding for text area
                     style={as === 'textarea' ? { minHeight: '100px', paddingTop: '12px' } : {}}
                 />
             </div>
@@ -64,7 +57,6 @@ const IconInput = ({ icon: Icon, label, id, as = 'input', ...props }) => {
     );
 };
 
-// --- 💎 NEW: Image Zoom Modal ---
 const ImageModal = ({ src, onClose }) => (
     <div 
         className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
@@ -95,27 +87,26 @@ const Profile = () => {
     const [error, setError] = useState('');
     const [notification, setNotification] = useState({ message: '', type: '' });
 
-    // State for editing form
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [fullName, setFullName] = useState('');
     const [mobile, setMobile] = useState('');
     const [email, setEmail] = useState('');
     const [businessName, setBusinessName] = useState(''); 
-    const [address, setAddress] = useState(''); // 💎 ADDED: Address state
+    const [address, setAddress] = useState(''); 
     const [profileImageFile, setProfileImageFile] = useState(null);
     const [profileImagePreview, setProfileImagePreview] = useState('');
     const [placeholderAvatar, setPlaceholderAvatar] = useState('https://placehold.co/96x96/cccccc/333333?text=A');
-    const [isModalOpen, setIsModalOpen] = useState(false); // 💎 ADDED: Modal state
+    const [isModalOpen, setIsModalOpen] = useState(false); 
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false); // 💎 NEW: Sidebar state
     const fileInputRef = useRef(null);
 
-    // --- Data Fetching ---
+    // --- Data Fetching --- (Remains the same)
     useEffect(() => {
         const fetchProfile = async () => {
             try {
                 setLoading(true);
                 const data = await profileService.getProfile(); 
                 
-                // 💎 IMPROVED: Use initials for placeholder
                 const initials = getInitials(data.fullName || 'U');
                 const placeholder = `https://placehold.co/96x96/cccccc/333333?text=${initials}`;
                 setPlaceholderAvatar(placeholder);
@@ -125,7 +116,7 @@ const Profile = () => {
                 setMobile(data.mobile || '');
                 setEmail(data.email || '');
                 setBusinessName(data.businessName || ''); 
-                setAddress(data.address || ''); // 💎 ADDED: Set address
+                setAddress(data.address || '');
                 setProfileImagePreview(data.avatar || placeholder); 
             } catch (err) {
                 setError('Failed to fetch profile data. Please check connection.');
@@ -147,7 +138,7 @@ const Profile = () => {
         }
     };
 
-    // --- Save Logic ---
+    // --- Save Logic (Remains the same) ---
     const handleSaveChanges = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
@@ -158,7 +149,7 @@ const Profile = () => {
         formData.append('mobile', mobile);
         formData.append('email', email);
         formData.append('businessName', businessName); 
-        formData.append('address', address); // 💎 ADDED: Append address
+        formData.append('address', address); 
         if (profileImageFile) {
             formData.append('avatar', profileImageFile);
         }
@@ -166,7 +157,6 @@ const Profile = () => {
         try {
             const updatedUser = await profileService.updateProfile(formData);
             setUserData(updatedUser);
-            // 💎 IMPROVED: Ensure new avatar URL is used, or fall back to placeholder
             const initials = getInitials(updatedUser.fullName || 'U');
             const placeholder = `https://placehold.co/96x96/cccccc/333333?text=${initials}`;
             setPlaceholderAvatar(placeholder);
@@ -185,7 +175,7 @@ const Profile = () => {
         }
     };
     
-    // --- Backup Logic ---
+    // --- Backup & Logout Logic (Remains the same) ---
     const handleBackup = async () => {
         setIsSubmitting(true);
         clearNotification();
@@ -200,7 +190,6 @@ const Profile = () => {
         }
     };
 
-    // --- Logout Logic (Placeholder) ---
     const handleLogout = () => {
         setNotification({ message: 'Logging out (simulated)...', type: 'error' });
         setTimeout(() => {
@@ -214,13 +203,11 @@ const Profile = () => {
     if (error) return <div className="p-8 text-red-600 text-center w-full">{error}</div>;
     if (!userData) return <div className="p-8 text-center w-full">No user data found.</div>;
 
-    // --- Content Renderers ---
-
+    // --- Content Renderers (Remains the same) ---
     const renderProfileSummary = () => (
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-gray-800 border-b pb-3">Account Overview</h2>
             
-            {/* 💎 IMPROVED: Grid layout for summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-gray-50 p-6 rounded-xl shadow-inner space-y-1">
                     <p className="text-sm font-medium text-gray-500">Full Name</p>
@@ -239,7 +226,6 @@ const Profile = () => {
                     <p className="text-lg font-semibold text-gray-800">{userData.mobile}</p>
                 </div>
                 
-                {/* 💎 ADDED: Address Display */}
                 <div className="bg-gray-50 p-6 rounded-xl shadow-inner md:col-span-2 space-y-1">
                     <p className="text-sm font-medium text-gray-500">Address</p>
                     <p className="text-lg font-semibold text-gray-800 whitespace-pre-line">
@@ -261,7 +247,6 @@ const Profile = () => {
     );
 
     const renderBackupInfo = () => (
-        // ... (No changes here, code remains the same)
         <div>
             <h2 className="text-2xl font-bold text-gray-800 border-b pb-3">Data & Backup Management</h2>
             <p className="mt-4 text-gray-600">Your application data is regularly synchronized with the cloud. Trigger a manual backup if needed.</p>
@@ -284,7 +269,6 @@ const Profile = () => {
     );
 
     const renderEditProfileForm = () => {
-        // 💎 Check if image is a real one (not placeholder) to allow zoom
         const isImageZoomable = profileImagePreview && !profileImagePreview.includes('placehold.co');
         
         return (
@@ -300,7 +284,6 @@ const Profile = () => {
                             alt="Profile Avatar" 
                             className={`h-24 w-24 rounded-full object-cover ring-4 ring-[#0173AE]/20 ${isImageZoomable ? 'cursor-pointer' : ''}`}
                             onError={(e) => e.target.src = placeholderAvatar} 
-                            // 💎 ADDED: onClick to open modal
                             onClick={() => isImageZoomable && setIsModalOpen(true)}
                         />
                         <button type="button" onClick={() => fileInputRef.current.click()} className="absolute bottom-0 right-0 bg-white rounded-full p-2 shadow-lg border border-gray-200 hover:bg-gray-100 transition">
@@ -331,7 +314,6 @@ const Profile = () => {
                         required
                     />
 
-                    {/* 💎 ADDED: Address Field (as textarea) */}
                     <div className="md:col-span-2">
                         <IconInput
                             as="textarea"
@@ -366,7 +348,7 @@ const Profile = () => {
                         onChange={(e) => setMobile(e.target.value)}
                     />
                     <div className="md:col-span-2">
-                         <IconInput
+                        <IconInput
                             label="Email Address"
                             id="email"
                             icon={AtSymbolIcon}
@@ -432,8 +414,8 @@ const Profile = () => {
             <div className="mt-10 pt-6 border-t">
                  <h3 className="text-lg font-bold text-gray-800">System Information</h3>
                  <p className="text-sm text-gray-500 mt-2">
-                     App Version: <span className="font-semibold text-gray-700">1.2.0</span> | 
-                     Last Server Sync: <span className="font-semibold text-gray-700">{userData.lastBackup ? new Date(userData.lastBackup).toLocaleTimeString() : 'N/A'}</span>
+                      App Version: <span className="font-semibold text-gray-700">1.2.0</span> | 
+                      Last Server Sync: <span className="font-semibold text-gray-700">{userData.lastBackup ? new Date(userData.lastBackup).toLocaleTimeString() : 'N/A'}</span>
                  </p>
             </div>
         </div>
@@ -456,6 +438,7 @@ const Profile = () => {
             case 'help':
                 return renderHelpAndSupport(); 
             case 'logout':
+                // Note: The logout logic is handled by the button, this just returns the default view
                 return renderProfileSummary(); 
             default:
                 return renderProfileSummary();
@@ -467,9 +450,27 @@ const Profile = () => {
             {/* 💎 ADDED: Render modal if open */}
             {isModalOpen && <ImageModal src={profileImagePreview} onClose={() => setIsModalOpen(false)} />}
             
-            <aside className="w-80 bg-white border-r shadow-lg flex flex-col p-6">
-                <div className="mb-8 p-4 border-b pb-5">
+            {/* 💎 NEW: Mobile Overlay */}
+            {isSidebarOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/50 z-40 md:hidden"
+                    onClick={() => setIsSidebarOpen(false)}
+                />
+            )}
+
+            {/* --- Sidebar (Navigation) --- */}
+            <aside className={`
+                w-80 bg-white border-r shadow-lg flex-shrink-0 flex flex-col p-6
+                md:relative md:translate-x-0 md:z-0
+                fixed inset-y-0 left-0 z-50 transition-transform duration-300 ease-in-out
+                ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
+            `}>
+                {/* 💎 NEW: Mobile Close Button (inside sidebar) */}
+                <div className="flex justify-between items-center mb-8 p-4 border-b pb-5">
                     <h1 className="text-2xl font-extrabold text-[#00264B]">Settings</h1>
+                    <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-500 hover:text-gray-900 transition">
+                        <XMarkIcon className="h-7 w-7" />
+                    </button>
                 </div>
 
                 {/* User Info Card */}
@@ -495,14 +496,14 @@ const Profile = () => {
                         title="Account Overview" 
                         subtitle="View and manage personal details" 
                         active={activeSetting === 'account'} 
-                        onClick={() => { setActiveSetting('account'); clearNotification(); }}
+                        onClick={() => { setActiveSetting('account'); clearNotification(); setIsSidebarOpen(false); }}
                     />
                     <SettingsMenuItem 
                         icon={PencilIcon} 
                         title="Edit Profile" 
                         subtitle="Update photo, name, and contact info" 
                         active={activeSetting === 'editProfile'} 
-                        onClick={() => { setActiveSetting('editProfile'); clearNotification(); }}
+                        onClick={() => { setActiveSetting('editProfile'); clearNotification(); setIsSidebarOpen(false); }}
                     />
                     <div className="border-t border-gray-200 my-4"></div>
                     <SettingsMenuItem 
@@ -510,21 +511,21 @@ const Profile = () => {
                         title="Backup & Sync" 
                         subtitle="Data synchronization status" 
                         active={activeSetting === 'backup'} 
-                        onClick={() => { setActiveSetting('backup'); clearNotification(); }}
+                        onClick={() => { setActiveSetting('backup'); clearNotification(); setIsSidebarOpen(false); }}
                     />
                     <SettingsMenuItem 
                         icon={CreditCardIcon} 
                         title="Plans & Billing" 
                         subtitle="Subscription and payment history" 
                         active={activeSetting === 'billing'} 
-                        onClick={() => { setActiveSetting('billing'); clearNotification(); }}
+                        onClick={() => { setActiveSetting('billing'); clearNotification(); setIsSidebarOpen(false); }}
                     />
                     <SettingsMenuItem 
                         icon={TrashIcon} 
                         title="Recycle Bin" 
                         subtitle="Restore deleted items" 
                         active={activeSetting === 'recycle'} 
-                        onClick={() => { setActiveSetting('recycle'); clearNotification(); }}
+                        onClick={() => { setActiveSetting('recycle'); clearNotification(); setIsSidebarOpen(false); }}
                     />
                     <div className="border-t border-gray-200 my-4"></div>
                     <SettingsMenuItem 
@@ -532,7 +533,7 @@ const Profile = () => {
                         title="Help & Support" 
                         subtitle="Guides and contact info" 
                         active={activeSetting === 'help'} 
-                        onClick={() => { setActiveSetting('help'); clearNotification(); }}
+                        onClick={() => { setActiveSetting('help'); clearNotification(); setIsSidebarOpen(false); }}
                     />
                     <SettingsMenuItem 
                         icon={ArrowLeftOnRectangleIcon} 
@@ -543,7 +544,19 @@ const Profile = () => {
                     />
                 </nav>
             </aside>
-            <main className="flex-1 p-10 bg-gray-50 overflow-y-auto">
+            
+            {/* --- Main Content Area --- */}
+            <main className="flex-1 p-4 sm:p-6 lg:p-10 bg-gray-50 overflow-y-auto">
+                {/* 💎 NEW: Mobile Hamburger Button (top of main content) */}
+                <div className="md:hidden mb-4">
+                    <button
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="p-2 border border-gray-300 rounded-md bg-white text-gray-600 hover:bg-gray-100 transition"
+                    >
+                        <FiMenu className="h-6 w-6" />
+                    </button>
+                </div>
+
                 <div className="max-w-4xl mx-auto bg-white p-8 rounded-2xl shadow-xl">
                     {/* Notification Area */}
                     {notification.message && (

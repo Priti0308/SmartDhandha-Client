@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Contact from "./pages/Contact";
 import Feedback from "./pages/Feedback";
+import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 import Profile from "./pages/Profile";
 
@@ -20,7 +21,7 @@ import Visitor from "./features/Visitor/Visitor";
 import Customer from "./features/Customer/Customer";
 
 // --- Import Superadmin Pages ---
-import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import SuperAdminDashboard, { SuperAdminSettings } from "./pages/SuperAdminDashboard";
 // import UserManagementPage from "./pages/UserManagementPage"; // You can add this next
 
 // --- Import Route Protection ---
@@ -40,6 +41,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/feedback" element={<Feedback />} />
+          <Route path="/help" element={<Help />} />
 
           {/* ================================== */}
           {/* Regular User Protected Routes    */}
@@ -58,10 +60,12 @@ function App() {
           {/* ================================== */}
           {/* Superadmin Protected Routes    */}
           {/* ================================== */}
-          {/* These routes are ONLY for the 'superadmin' role */}
+          {/* --- Superadmin Protected Routes --- */}
           <Route element={<SuperAdminRoute />}>
+            {/* --- 2. THIS STAYS THE SAME --- */}
             <Route path="/superadmin" element={<SuperAdminDashboard />} />
-            {/* <Route path="/superadmin/users" element={<UserManagementPage />} /> */}
+            {/* --- 3. THIS NOW WORKS --- */}
+            <Route path="/superadmin/settings" element={<SuperAdminSettings />} />
           </Route>
 
           {/* ================================== */}
