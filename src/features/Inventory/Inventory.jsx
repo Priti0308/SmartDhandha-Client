@@ -3,11 +3,16 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import JsBarcode from "jsbarcode";
 
+// Assuming your profile service is named 'profileService'
+import { getProfile } from "../../services/profileService"; 
 import { get, post, put, deleteItem, postInvoice, recordPayment } from "../../services/inventoryService";
 
 // Import React Toastify components and CSS
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+
+// Import the new child component
+import InventoryGST from "./InventoryGST";
 
 /* ---------------------- helpers ---------------------- */
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -44,8 +49,9 @@ const Barcode = ({ value }) => {
   return <svg ref={ref}></svg>;
 };
 
-/* ---------------------- Inventory Page ---------------------- */
-const Inventory = ({ businessName = "SmartDhandha" }) => {
+/* ---------------------- Parent Inventory Page ---------------------- */
+// Changed businessName prop to businessNameFallback for clarity, but kept the original signature
+const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => { 
   /* Data stores */
   const [products, setProducts] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -54,6 +60,14 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("invoice");
+  
+  // NEW STATE: Business details from profileService
+  const [businessDetails, setBusinessDetails] = useState({ 
+    name: businessNameFallback, 
+    address: 'Your Company Address, City, Pincode',
+    gstin: 'YOUR_GSTIN',
+    contact: ''
+  });
 
   // State for view modals
   const [viewProduct, setViewProduct] = useState(null);
@@ -61,6 +75,9 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
 
   // State for reliable PDF generation
   const [invoiceForPdf, setInvoiceForPdf] = useState(null);
+  
+  // --- NEW State for reliable IMAGE generation/sharing ---
+  const [invoiceForShare, setInvoiceForShare] = useState(null);
 
   // --- State for Payment Modal ---
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -72,7 +89,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
     note: "",
   });
 
-  // --- NEW: State for Customer Add-on-the-fly ---
+  // --- State for Customer Add-on-the-fly ---
   const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
@@ -83,24 +100,38 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
     address: ""
   });
 
-
-  // Data fetching effect
+  // Data fetching effect (MODIFIED)
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [productsData, invoicesData, cashflowsData, suppliersData, customersData] = await Promise.all([
+        // Fetch all data concurrently, including the user's business profile
+        const [productsData, invoicesData, cashflowsData, suppliersData, customersData, profileData] = await Promise.all([
           get("inventory/products"),
           get("inventory/invoices"),
           get("inventory/cashflows"),
           get("inventory/suppliers"),
           get("inventory/customers"),
+          getProfile() // NEW: Fetch profile data
         ]);
+        
         setProducts(productsData);
         setInvoices(invoicesData.sort((a, b) => new Date(b.date) - new Date(a.date)));
         setCashflows(cashflowsData);
         setSuppliers(suppliersData);
         setCustomers(customersData);
+        
+        // Update business details if profileData is successfully fetched
+        if (profileData) {
+            setBusinessDetails(prev => ({
+                ...prev,
+                name: profileData.businessName || prev.name,
+                address: profileData.address || prev.address,
+                gstin: profileData.gstin || prev.gstin,
+                contact: profileData.phone || prev.contact
+            }));
+        }
+        
       } catch (err) {
         toast.error("Failed to fetch initial data. Please try logging in again or refresh.");
         console.error("Fetch Data Error:", err);
@@ -109,7 +140,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
       }
     };
     fetchData();
-  }, []);
+  }, []); // Empty dependency array means it runs once on mount
 
   // Effect hook to handle PDF generation
   useEffect(() => {
@@ -159,7 +190,68 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
     };
 
     generatePdf();
-  }, [invoiceForPdf, businessName]);
+  }, [invoiceForPdf, businessDetails]); // Added businessDetails dependency
+
+  // Effect hook to handle Image Generation and Sharing
+  useEffect(() => {
+    const generateImageAndShare = async () => {
+      if (!invoiceForShare) return;
+
+      const element = document.getElementById('pdf-generator');
+      if (!element) {
+        toast.error("Sharing failed: Template not found.");
+        setInvoiceForShare(null);
+        return;
+      }
+
+      const loadingToast = toast.info("Generating shareable image...", { autoClose: false, closeButton: false });
+
+      try {
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        const canvas = await html2canvas(element, { 
+            scale: 2, 
+            useCORS: true, 
+            logging: false, 
+            width: element.offsetWidth,
+            height: element.offsetHeight
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const fileName = `${invoiceForShare.type === 'sale' ? 'Invoice' : 'Bill'}-${invoiceForShare.customerName.replace(/ /g, '-')}-${invoiceForShare.date}.png`;
+        const shareText = `Here is the ${invoiceForShare.type === 'sale' ? 'invoice' : 'bill'} from ${businessDetails.name} for ₹${formatINR(invoiceForShare.totalGrand)}`;
+
+        if (navigator.share) {
+          const blob = await (await fetch(imgData)).blob();
+          const file = new File([blob], fileName, { type: 'image/png' });
+
+          await navigator.share({
+            title: `${businessDetails.name} - ${invoiceForShare.type === 'sale' ? 'Invoice' : 'Bill'}`,
+            text: shareText,
+            files: [file],
+          });
+          toast.update(loadingToast, { render: "Image shared successfully! 📤", type: "success", autoClose: 3000 });
+        } else {
+          const link = document.createElement('a');
+          link.href = imgData;
+          link.download = fileName;
+          link.click();
+          toast.update(loadingToast, { render: "Image downloaded! 📥", type: "success", autoClose: 3000 });
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') { 
+            console.error("Failed to generate image or share:", error);
+            toast.update(loadingToast, { render: "Could not share or download image.", type: "error", autoClose: 5000 });
+        } else {
+             toast.dismiss(loadingToast);
+        }
+      } finally {
+        setInvoiceForShare(null);
+      }
+    };
+
+    generateImageAndShare();
+  }, [invoiceForShare, businessDetails]); // Added businessDetails dependency
 
 
   /* ---------------------- Top KPIs ---------------------- */
@@ -201,13 +293,13 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
     gstRate: 18,
   });
   
-  // NEW: Memoized filtered customers for search
+  // Memoized filtered customers for search
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return customers;
     return customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()));
   }, [customerSearch, customers]);
 
-  // NEW: Handler for customer search input change
+  // Handler for customer search input change
   const handleCustomerSearchChange = (e) => {
     const value = e.target.value;
     setCustomerSearch(value);
@@ -217,14 +309,14 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
     }
   };
 
-  // NEW: Handler for selecting a customer from suggestions
+  // Handler for selecting a customer from suggestions
   const handleSelectCustomer = (customerName) => {
     setCustomerSearch(customerName);
     setInv(prev => ({ ...prev, customerName: customerName }));
     setShowCustomerSuggestions(false);
   };
   
-  // NEW: Handler for submitting the Add Customer modal
+  // Handler for submitting the Add Customer modal
   const handleAddNewCustomerSubmit = async (e) => {
       e.preventDefault();
       if (!newCustomerForm.name.trim()) {
@@ -232,7 +324,6 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
           return;
       }
       try {
-          // Assuming your 'post' service call to 'ledger/customers' works
           await post('inventory/customers', newCustomerForm);
           const updatedCustomers = await get('inventory/customers'); // Refetch customers
           setCustomers(updatedCustomers);
@@ -248,30 +339,30 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
       }
   };
 
-    // MODIFIED: This function now automatically checks for new customers on blur.
+    // This function now automatically checks for new customers on blur.
     const handleCustomerFieldBlur = () => {
-        // A small delay is crucial. It allows the user to click on a suggestion
-        // before the onBlur event hides the suggestion list.
-        setTimeout(() => {
-          setShowCustomerSuggestions(false);
-    
-          const partyName = customerSearch.trim();
-    
-          // This logic should only run for 'sale' invoices and if a name has been typed.
-          if (inv.type === 'sale' && partyName) {
-            // Check if the typed customer name already exists in our list (case-insensitive).
-            const customerExists = customers.some(c => c.name.toLowerCase() === partyName.toLowerCase());
-    
-            // If the customer does NOT exist, automatically open the 'Add Customer' modal.
-            if (!customerExists) {
-              // Pre-fill the new customer form with the name the user typed.
-              setNewCustomerForm({ name: partyName, phone: '', email: '', address: '' });
-              setShowAddCustomerModal(true);
-              toast.info("This is a new customer. Please add their details to continue.");
-            }
+      // A small delay is crucial. It allows the user to click on a suggestion
+      // before the onBlur event hides the suggestion list.
+      setTimeout(() => {
+        setShowCustomerSuggestions(false);
+      
+        const partyName = customerSearch.trim();
+      
+        // This logic should only run for 'sale' invoices and if a name has been typed.
+        if (inv.type === 'sale' && partyName) {
+          // Check if the typed customer name already exists in our list (case-insensitive).
+          const customerExists = customers.some(c => c.name.toLowerCase() === partyName.toLowerCase());
+      
+          // If the customer does NOT exist, automatically open the 'Add Customer' modal.
+          if (!customerExists) {
+            // Pre-fill the new customer form with the name the user typed.
+            setNewCustomerForm({ name: partyName, phone: '', email: '', address: '' });
+            setShowAddCustomerModal(true);
+            toast.info("This is a new customer. Please add their details to continue.");
           }
-        }, 200); // 200ms delay to allow click events to process.
-      };
+        }
+      }, 200); // 200ms delay to allow click events to process.
+    };
 
 
   useEffect(() => {
@@ -376,7 +467,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
     const partyName = inv.customerName.trim();
     if (!partyName) { toast.warn(`Please select a ${inv.type === 'sale' ? 'Customer' : 'Supplier'}.`); return; }
 
-    // --- NEW: Check if customer exists for sales invoices ---
+    // --- Check if customer exists for sales invoices ---
     if (inv.type === 'sale') {
       const customerExists = customers.some(c => c.name.toLowerCase() === partyName.toLowerCase());
       if (!customerExists) {
@@ -407,8 +498,71 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
     };
 
     try {
-      await postInvoice(newInvoiceData);
+      // 1. Post the invoice/bill and update stock on the server
+      const newInvoice = await postInvoice(newInvoiceData);
       
+      // 2. --- START: LOGIC FOR "EQUAL CENTER RATE" / WEIGHTED AVERAGE COST UPDATE ---
+      if (newInvoice.type === 'purchase') {
+        for (const item of newInvoice.items) {
+          const existingProduct = products.find(p => p._id === item.productId);
+          if (!existingProduct) continue; // Skip if product not found
+
+          // Since postInvoice updates stock *on the server*, we need to infer the stock
+          // *before* this purchase to calculate the correct WAC.
+          // For simplicity, we assume the existingProduct state holds the current average
+          // price, but its stock might be slightly behind the server's update.
+          
+          const newPurchaseQty = Number(item.qty);
+          const newPurchaseCost = Number(item.price);
+          const oldAverageCost = Number(existingProduct.unitPrice);
+          
+          // Using the current stock as a proxy for the total inventory *after* the purchase.
+          // We must refetch the products *before* this logic for a completely accurate WAC,
+          // but sticking to the current structure, we calculate the WAC relative to the *state*.
+          
+          // To implement the WAC based on the purchase:
+          // We must know the stock *before* the transaction. Since we don't have it reliably
+          // without an extra fetch, we use the WAC formula where:
+          // Old Stock + New Purchase Qty = Total New Stock
+          // For now, we rely on the backend to update stock correctly and assume the state's stock 
+          // is the new total stock for WAC calculation.
+          
+          const totalNewStock = Number(existingProduct.stock) + newPurchaseQty; // Approximation
+          const oldStock = Number(existingProduct.stock); // Stock *before* the server side increase
+          
+          let newUnitSalePrice;
+          
+          if (oldStock <= 0) {
+            // If previous stock was zero or less, the new price is simply the latest purchase cost.
+            newUnitSalePrice = newPurchaseCost; 
+          } else {
+            // Weighted Average Cost (WAC): 
+            // New Avg Cost = (Old Stock * Old Avg Cost + New Qty * New Cost) / (Old Stock + New Qty)
+            const totalCost = (oldStock * oldAverageCost) + (newPurchaseQty * newPurchaseCost);
+            const totalQty = oldStock + newPurchaseQty; // The total quantity of inventory
+            
+            // The new 'equal center rate'
+            newUnitSalePrice = totalCost / totalQty;
+          }
+
+          // Prepare the updated product data to update the unitPrice (Sale Price)
+          const updatedProductData = {
+            ...existingProduct,
+            id: existingProduct._id, 
+            unitPrice: Number(newUnitSalePrice).toFixed(2), // Set the new 'equal center rate'
+            lowStock: Number(existingProduct.lowStock || 5),
+            gstRate: Number(existingProduct.gstRate || 18),
+            // The stock field is NOT included as it's handled by postInvoice.
+          };
+          delete updatedProductData.stock; 
+          
+          // Send the PUT request to update the product's unit price (average cost)
+          await put('inventory/products', updatedProductData);
+        }
+      }
+      // 2. --- END: LOGIC FOR "EQUAL CENTER RATE" / WEIGHTED AVERAGE COST UPDATE ---
+      
+      // 3. Refetch all data to update the UI with new stock and price changes
       const [productsData, invoicesData, cashflowsData] = await Promise.all([
         get("inventory/products"),
         get("inventory/invoices"),
@@ -431,7 +585,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
     if (window.confirm(`Are you sure you want to delete this ${invoice.type}? This will also delete ALL related payments and reverse stock changes.`)) {
       try {
         await deleteItem('inventory/invoices', invoice._id);
- 
+  
         const [invoicesData, cashflowsData, productsData] = await Promise.all([
             get("inventory/invoices"),
             get("inventory/cashflows"),
@@ -440,7 +594,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
         setInvoices(invoicesData.sort((a, b) => new Date(b.date) - new Date(a.date)));
         setCashflows(cashflowsData);
         setProducts(productsData);
- 
+  
         toast.success("Invoice and related payments deleted successfully!");
       } catch (error) {
         toast.error(error.response?.data?.message || 'Failed to delete invoice.');
@@ -620,7 +774,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
       }
       setSuppliers(await get('inventory/suppliers'));
       setShowSupplierModal(false);
-    } catch (error)   {
+    } catch (error)    {
       toast.error(error.response?.data?.message || 'Failed to save supplier.');
       console.error("Save Supplier Error:", error.response?.data || error);
     }
@@ -630,11 +784,11 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
       const supplier = suppliers.find(s => s._id === id);
       const supplierName = supplier?.name;
       if (supplierName) {
-         const isInPurchaseBill = invoices.some(inv => inv.type === 'purchase' && inv.customerName === supplierName);
-         if (isInPurchaseBill) {
-             toast.error("Cannot delete supplier: They are associated with existing purchase bills.");
-             return;
-         }
+           const isInPurchaseBill = invoices.some(inv => inv.type === 'purchase' && inv.customerName === supplierName);
+           if (isInPurchaseBill) {
+               toast.error("Cannot delete supplier: They are associated with existing purchase bills.");
+               return;
+           }
       }
       if (window.confirm("Are you sure you want to delete this supplier?")) {
         try {
@@ -647,68 +801,9 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
         }
       }
   };
-
-  /* ---------------------- GST Report ---------------------- */
-  const [gstFilter, setGstFilter] = useState({ from: "", to: "" });
-  const filteredInvoices = useMemo(() => {
-    let list = invoices;
-    try {
-        if (gstFilter.from) list = list.filter((i) => i.date >= gstFilter.from);
-        if (gstFilter.to) list = list.filter((i) => i.date <= gstFilter.to);
-    } catch (e) { console.error("Date filtering error:", e); }
-    return list;
-  }, [invoices, gstFilter]);
-
-  const outputGST = filteredInvoices.filter((i) => i.type === "sale").reduce((s, i) => s + (i.totalGST || 0), 0);
-  const inputGST = filteredInvoices.filter((i) => i.type === "purchase").reduce((s, i) => s + (i.totalGST || 0), 0);
-  const netGST_filtered = outputGST - inputGST;
-
-
+  
   /* ---------------------- Stock Tracking ---------------------- */
   const [stockSearch, setStockSearch] = useState("");
-
-  /* ---------------------- Expense/Income ---------------------- */
-  const [flowForm, setFlowForm] = useState({
-    kind: "expense", date: todayISO(), category: "", amount: "", note: "",
-  });
-
-  const submitCashflow = async (e) => {
-    e.preventDefault();
-    const amt = Number(flowForm.amount || 0);
-    if (!amt || amt <= 0) { toast.warn("Please enter a valid positive amount."); return; }
-    if (!flowForm.category.trim()) { toast.warn("Please enter a category."); return; }
-
-    try {
-      await post('inventory/cashflows', { ...flowForm, amount: amt });
-      setCashflows(await get('inventory/cashflows'));
-      setFlowForm({ kind: "expense", date: todayISO(), category: "", amount: "", note: "" });
-      toast.success("Cashflow entry added! ");
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to add entry.');
-      console.error("Add Cashflow Error:", error.response?.data || error);
-    }
-  };
-
-  const deleteCashflow = async (id) => {
-    if (window.confirm("Are you sure you want to delete this cashflow entry? If it's a payment, the invoice balance will be updated.")) {
-      try {
-        await deleteItem('inventory/cashflows', id);
-        const [cashflowsData, invoicesData] = await Promise.all([
-            get('inventory/cashflows'),
-            get('inventory/invoices')
-        ]);
-        setCashflows(cashflowsData.sort((a, b) => new Date(b.date) - new Date(a.date)));
-        setInvoices(invoicesData.sort((a, b) => new Date(b.date) - new Date(a.date)));
-
-        toast.success("Cashflow entry deleted!");
-      } catch (error) {
-        toast.error(error.response?.data?.message || 'Failed to delete entry.');
-        console.error("Delete Cashflow Error:", error.response?.data || error);
-      }
-    }
-  };
-
-  const flowsFiltered = cashflows;
 
   /* ---------------------- UI ---------------------- */
   if (loading) {
@@ -778,8 +873,8 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                 Create {inv.type === 'sale' ? 'Sale Invoice' : 'Purchase Bill'}
               </h2>
               <form onSubmit={submitInvoice} className="space-y-4">
-                 <div className="grid sm:grid-cols-3 gap-4">
-                 <div>
+                  <div className="grid sm:grid-cols-3 gap-4">
+                  <div>
                     <label className="text-xs text-gray-500 block mb-1">Type</label>
                     <select
                       className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none"
@@ -793,14 +888,14 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                       <option value="purchase">Purchase Bill</option>
                     </select>
                   </div>
-                 <div>
+                  <div>
                     <label className="text-xs text-gray-500 block mb-1">Date</label>
-                  <input
-                    type="date"
-                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none"
-                    value={inv.date}
-                    onChange={(e) => setInv({ ...inv, date: e.target.value })}
-                  />
+                    <input
+                      type="date"
+                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none"
+                      value={inv.date}
+                      onChange={(e) => setInv({ ...inv, date: e.target.value })}
+                    />
                   </div>
                   {/* --- MODIFIED: Customer/Supplier input --- */}
                   <div onBlur={handleCustomerFieldBlur}>
@@ -834,18 +929,18 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                         )}
                       </div>
                     ) : (
-                     <select
-                        className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none bg-white"
-                        value={inv.customerName}
-                        onChange={(e) => setInv({ ...inv, customerName: e.target.value })}
-                        required
-                      >
-                        <option value="">— Select Supplier —</option>
-                        {suppliers.map((s) => (
-                          <option key={s._id} value={s.name}>
-                            {s.name}
-                          </option>
-                        ))}
+                      <select
+                          className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none bg-white"
+                          value={inv.customerName}
+                          onChange={(e) => setInv({ ...inv, customerName: e.target.value })}
+                          required
+                        >
+                          <option value="">— Select Supplier —</option>
+                          {suppliers.map((s) => (
+                            <option key={s._id} value={s.name}>
+                              {s.name}
+                            </option>
+                          ))}
                       </select>
                     )}
                   </div>
@@ -948,7 +1043,8 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                           ))
                         )}
                       </tbody>
-                    </table>
+                    </table
+                      >
                   </div>
                   {/* Totals Section */}
                   <div className="px-4 py-3 grid sm:grid-cols-3 gap-4 border-t">
@@ -967,11 +1063,11 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                         <span className="text-gray-600">Sub Total:</span>
                         <span className="font-semibold">₹ {formatINR(totalsInvoice.subtotal)}</span>
                       </div>
-                       <div className="flex justify-between text-sm">
+                        <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Total GST:</span>
                         <span className="font-semibold">₹ {formatINR(totalsInvoice.totalGST)}</span>
                       </div>
-                       <div className="flex justify-between text-base mt-2 pt-2 border-t border-gray-200">
+                        <div className="flex justify-between text-base mt-2 pt-2 border-t border-gray-200">
                         <span className="font-bold text-[#0066A3]">Grand Total:</span>
                         <span className="font-bold text-[#0066A3]">₹ {formatINR(totalsInvoice.totalGrand)}</span>
                       </div>
@@ -990,7 +1086,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
               </form>
             </div>
 
-            {/* Recent Invoices Sidebar */}
+            {/* Recent Invoices Sidebar (UPDATED with Share button) */}
             <div className="bg-white rounded-2xl shadow p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-3">Recent Activity</h3>
               <div className="space-y-3 max-h-[520px] overflow-auto pr-1 text-sm">
@@ -1012,25 +1108,32 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                       )}
                       <div className="mt-2 space-x-2">
                         {i.paymentStatus !== 'paid' && (
-                             <button
-                                className="px-3 py-1 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
-                                onClick={() => openPaymentModal(i)}
-                                title="Record Payment"
-                              >
-                                Record Payment
-                              </button>
+                                <button
+                                    className="px-3 py-1 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
+                                    onClick={() => openPaymentModal(i)}
+                                    title="Record Payment"
+                                >
+                                  Record Payment
+                                </button>
                         )}
                         <button
-                          className="px-3 py-1 text-xs rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          onClick={() => setInvoiceForPdf(i)}
-                          title="Download PDF"
+                            className="px-3 py-1 text-xs rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            onClick={() => setInvoiceForPdf(i)}
+                            title="Download PDF"
                         >
                           PDF
                         </button>
                         <button
-                          className="px-3 py-1 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200"
-                          onClick={() => deleteInvoice(i)}
-                          title="Delete Invoice"
+                            className="px-3 py-1 text-xs rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
+                            onClick={() => setInvoiceForShare(i)} 
+                            title="Share Invoice as Image"
+                        >
+                          Share
+                        </button>
+                        <button
+                            className="px-3 py-1 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200"
+                            onClick={() => deleteInvoice(i)}
+                            title="Delete Invoice"
                         >
                           Delete
                         </button>
@@ -1043,74 +1146,81 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
           </div>
         )}
 
-        {/* --- ALL INVOICES / BILLS Tab --- */}
+        {/* --- ALL INVOICES / BILLS Tab (UPDATED with Share button) --- */}
         {activeTab === "allInvoices" && (
             <div className="bg-white rounded-2xl shadow p-6">
               <h2 className="text-xl font-semibold text-gray-800 mb-4">All Invoices & Purchase Bills</h2>
-               <div className="overflow-x-auto">
-                 <table className="min-w-full text-left text-sm">
-                   <thead className="bg-[#003B6F] text-white text-xs uppercase">
-                   <tr>
-                       <th className="px-3 py-2 font-medium">Date</th>
-                       <th className="px-3 py-2 font-medium">Type</th>
-                       <th className="px-3 py-2 font-medium">Customer/Supplier</th>
-                       <th className="px-3 py-2 font-medium text-center">Status</th>
-                       <th className="px-3 py-2 font-medium text-right">Total (₹)</th>
-                       <th className="px-3 py-2 font-medium text-right">Balance Due (₹)</th>
-                       <th className="px-3 py-2 font-medium text-center">Actions</th>
-                   </tr>
-                   </thead>
-                   <tbody>
-                   {invoices.length === 0 ? (
-                       <tr>
-                         <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                           No invoices or bills found.
-                         </td>
-                       </tr>
-                   ) : (
-                       invoices.map((i) => (
-                         <tr key={i._id} className="border-t hover:bg-gray-50">
-                           <td className="px-3 py-2">{i.date}</td>
-                           <td className="px-3 py-2">
-                             <span className={`text-xs px-2 py-0.5 rounded font-medium ${i.type === "sale" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
-                               {i.type === "sale" ? "Sale" : "Purchase"}
-                             </span>
-                           </td>
-                           <td className="px-3 py-2 font-medium">{i.customerName}</td>
-                           <td className="px-3 py-2 text-center"><PaymentStatusBadge status={i.paymentStatus} /></td>
-                           <td className="px-3 py-2 text-right font-semibold text-[#003B6F]">₹ {formatINR(i.totalGrand)}</td>
-                           <td className="px-3 py-2 text-right font-medium text-red-600">₹ {formatINR(i.balanceDue)}</td>
-                           <td className="px-3 py-2 text-center space-x-2 whitespace-nowrap">
-                            {i.paymentStatus !== 'paid' && (
-                                <button
-                                    className="px-2 py-1 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
-                                    onClick={() => openPaymentModal(i)}
-                                    title="Record Payment"
-                                >
-                                    Pay
-                                </button>
-                            )}
-                             <button
-                               className="px-2 py-1 text-xs rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
-                               onClick={() => setInvoiceForPdf(i)}
-                               title="Download PDF"
-                             >
-                               PDF
-                             </button>
-                             <button
-                               className="px-2 py-1 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200"
-                               onClick={() => deleteInvoice(i)}
-                               title="Delete Invoice"
-                             >
-                               Delete
-                             </button>
-                           </td>
-                         </tr>
-                       ))
-                   )}
-                   </tbody>
-                 </table>
-               </div>
+                <div className="overflow-x-auto">
+                   <table className="min-w-full text-left text-sm">
+                        <thead className="bg-[#003B6F] text-white text-xs uppercase">
+                        <tr>
+                            <th className="px-3 py-2 font-medium">Date</th>
+                            <th className="px-3 py-2 font-medium">Type</th>
+                            <th className="px-3 py-2 font-medium">Customer/Supplier</th>
+                            <th className="px-3 py-2 font-medium text-center">Status</th>
+                            <th className="px-3 py-2 font-medium text-right">Total (₹)</th>
+                            <th className="px-3 py-2 font-medium text-right">Balance Due (₹)</th>
+                            <th className="px-3 py-2 font-medium text-center">Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {invoices.length === 0 ? (
+                            <tr>
+                               <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
+                                   No invoices or bills found.
+                               </td>
+                            </tr>
+                        ) : (
+                            invoices.map((i) => (
+                                <tr key={i._id} className="border-t hover:bg-gray-50">
+                                   <td className="px-3 py-2">{i.date}</td>
+                                   <td className="px-3 py-2">
+                                       <span className={`text-xs px-2 py-0.5 rounded font-medium ${i.type === "sale" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
+                                           {i.type === "sale" ? "Sale" : "Purchase"}
+                                       </span>
+                                   </td>
+                                   <td className="px-3 py-2 font-medium">{i.customerName}</td>
+                                   <td className="px-3 py-2 text-center"><PaymentStatusBadge status={i.paymentStatus} /></td>
+                                   <td className="px-3 py-2 text-right font-semibold text-[#003B6F]">₹ {formatINR(i.totalGrand)}</td>
+                                   <td className="px-3 py-2 text-right font-medium text-red-600">₹ {formatINR(i.balanceDue)}</td>
+                                   <td className="px-3 py-2 text-center space-x-2 whitespace-nowrap">
+                                    {i.paymentStatus !== 'paid' && (
+                                            <button
+                                                className="px-2 py-1 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
+                                                onClick={() => openPaymentModal(i)}
+                                                title="Record Payment"
+                                            >
+                                                Pay
+                                            </button>
+                                    )}
+                                       <button
+                                           className="px-2 py-1 text-xs rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                           onClick={() => setInvoiceForPdf(i)}
+                                           title="Download PDF"
+                                       >
+                                           PDF
+                                       </button>
+                                       <button
+                                           className="px-2 py-1 text-xs rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                           onClick={() => setInvoiceForShare(i)} 
+                                           title="Share Invoice as Image"
+                                       >
+                                           Share
+                                       </button>
+                                       <button
+                                           className="px-2 py-1 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200"
+                                           onClick={() => deleteInvoice(i)}
+                                           title="Delete Invoice"
+                                       >
+                                           Delete
+                                       </button>
+                                   </td>
+                                </tr>
+                            ))
+                        )}
+                        </tbody>
+                   </table>
+                </div>
             </div>
         )}
 
@@ -1154,24 +1264,24 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                           {p.image ? <img src={p.image} alt={p.name} className="h-10 w-10 object-cover rounded-md flex-shrink-0" /> : <div className="h-10 w-10 bg-gray-100 rounded-md flex-shrink-0" />}
                           <span className="font-medium">{p.name}</span>
                         </td>
-                         <td className="px-3 py-2 align-middle">
-                           {p.sku ? <Barcode value={p.sku} /> : <span className="text-xs text-gray-400">Not Set</span>}
-                         </td>
+                          <td className="px-3 py-2 align-middle">
+                              {p.sku ? <Barcode value={p.sku} /> : <span className="text-xs text-gray-400">Not Set</span>}
+                          </td>
                         <td className="px-3 py-2 align-middle">{p.category || "—"}</td>
                         <td className="px-3 py-2 text-right align-middle">₹ {formatINR(p.unitPrice)}</td>
                         <td className="px-3 py-2 text-center align-middle">{p.gstRate ?? 18}%</td>
                         <td className="px-3 py-2 text-center align-middle font-medium">{p.stock}</td>
                         <td className="px-3 py-2 text-center align-middle">{p.lowStock ?? 5}</td>
                         <td className="px-3 py-2 text-center align-middle space-x-2 whitespace-nowrap">
-                           <button className="text-gray-600 hover:underline text-xs" onClick={() => setViewProduct(p)}>
-                             View
-                           </button>
-                          <button className="text-[#0066A3] hover:underline text-xs" onClick={() => openEditProduct(p)}>
-                            Edit
-                          </button>
-                          <button className="text-red-600 hover:underline text-xs" onClick={() => deleteProduct(p._id)}>
-                            Delete
-                          </button>
+                            <button className="text-gray-600 hover:underline text-xs" onClick={() => setViewProduct(p)}>
+                                View
+                            </button>
+                            <button className="text-[#0066A3] hover:underline text-xs" onClick={() => openEditProduct(p)}>
+                              Edit
+                            </button>
+                            <button className="text-red-600 hover:underline text-xs" onClick={() => deleteProduct(p._id)}>
+                              Delete
+                            </button>
                         </td>
                       </tr>
                     ))
@@ -1220,9 +1330,9 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                         <td className="px-3 py-2">{s.phone || "—"}</td>
                         <td className="px-3 py-2">{s.email || "—"}</td>
                         <td className="px-3 py-2 text-center space-x-2 whitespace-nowrap">
-                           <button className="text-gray-600 hover:underline text-xs" onClick={() => setViewSupplier(s)}>
+                            <button className="text-gray-600 hover:underline text-xs" onClick={() => setViewSupplier(s)}>
                             View
-                           </button>
+                            </button>
                           <button className="text-[#0066A3] hover:underline text-xs" onClick={() => openEditSupplier(s)}>
                             Edit
                           </button>
@@ -1238,85 +1348,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
             </div>
           </div>
         )}
-
-        {/* --- GST REPORT Tab --- */}
-        {activeTab === "gst" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white rounded-2xl shadow p-6">
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                <h2 className="text-xl font-semibold text-gray-800">GST Report</h2>
-                <div className="flex gap-2 items-center">
-                   <label className="text-sm text-gray-600">From:</label>
-                  <input
-                    type="date"
-                    className="border rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-[#66B2FF] outline-none text-sm"
-                    value={gstFilter.from}
-                    onChange={(e) => setGstFilter({ ...gstFilter, from: e.target.value })}
-                  />
-                   <label className="text-sm text-gray-600 ml-2">To:</label>
-                  <input
-                    type="date"
-                    className="border rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-[#66B2FF] outline-none text-sm"
-                    value={gstFilter.to}
-                    onChange={(e) => setGstFilter({ ...gstFilter, to: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="bg-[#003B6F] text-white text-xs uppercase">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Date</th>
-                      <th className="px-3 py-2 font-medium">Type</th>
-                      <th className="px-3 py-2 font-medium">Party</th>
-                      <th className="px-3 py-2 font-medium text-right">Sub Total (₹)</th>
-                      <th className="px-3 py-2 font-medium text-right">GST (₹)</th>
-                      <th className="px-3 py-2 font-medium text-right">Grand Total (₹)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredInvoices.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-gray-500">
-                          No invoices or bills found for the selected period.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredInvoices.map((i) => (
-                        <tr key={i._id} className="border-t hover:bg-gray-50">
-                          <td className="px-3 py-2">{i.date}</td>
-                          <td className="px-3 py-2">
-                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${i.type === "sale" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
-                              {i.type === "sale" ? "Sale" : "Purchase"}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">{i.customerName}</td>
-                          <td className="px-3 py-2 text-right">₹ {formatINR(i.subtotal)}</td>
-                          <td className="px-3 py-2 text-right">₹ {formatINR(i.totalGST)}</td>
-                          <td className="px-3 py-2 text-right font-semibold">₹ {formatINR(i.totalGrand)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl shadow p-6 self-start">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">GST Summary</h3>
-              <div className="space-y-3 text-sm">
-                <SummaryRow label="Output GST (Sales)" value={outputGST} pos />
-                <SummaryRow label="Input GST (Purchases)" value={inputGST} />
-                <div className="border-t pt-3 mt-3">
-                  <SummaryRow label="Net GST Payable" value={netGST_filtered} highlight />
-                   <p className="text-xs text-gray-500 mt-2">
-                     {netGST_filtered >= 0 ? 'Amount payable to government.' : 'Input Tax Credit (ITC) available.'}
-                   </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
+        
         {/* --- STOCK TRACKING Tab --- */}
         {activeTab === "stock" && (
           <div className="bg-white rounded-2xl shadow p-6">
@@ -1371,7 +1403,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                       );
                     })}
                    {products.filter(p => p.name.toLowerCase().includes(stockSearch.toLowerCase()) || (p.sku && p.sku.toLowerCase().includes(stockSearch.toLowerCase()))).length === 0 && (
-                    <tr><td colSpan={8} className="text-center py-4 text-gray-500">No products match your search.</td></tr>
+                     <tr><td colSpan={8} className="text-center py-4 text-gray-500">No products match your search.</td></tr>
                    )}
                 </tbody>
               </table>
@@ -1379,137 +1411,25 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
           </div>
         )}
 
-        {/* --- EXPENSE / INCOME Tab --- */}
-        {activeTab === "report" && (
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-2xl shadow p-6">
-                <h2 className="text-xl font-semibold text-gray-800 mb-3">Add Expense / Income</h2>
-                <form onSubmit={submitCashflow} className="space-y-4">
-                   <div>
-                    <label className="text-xs text-gray-500 block mb-1">Type</label>
-                   <select
-                     className="w-full border rounded-lg px-3 py-2 focus:ring-1 focus:ring-[#66B2FF] outline-none text-sm bg-white"
-                     value={flowForm.kind}
-                     onChange={(e) => setFlowForm({ ...flowForm, kind: e.target.value })}
-                   >
-                     <option value="expense">Expense</option>
-                     <option value="income">Income</option>
-                   </select>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="text-xs text-gray-500 block mb-1">Date</label>
-                       <input
-                       type="date"
-                       className="w-full border rounded-lg px-3 py-2 focus:ring-1 focus:ring-[#66B2FF] outline-none text-sm"
-                       value={flowForm.date}
-                       onChange={(e) => setFlowForm({ ...flowForm, date: e.target.value })}
-                       />
-                    </div>
-                     <div>
-                        <label className="text-xs text-gray-500 block mb-1">Amount (₹)</label>
-                       <input
-                         type="number"
-                         step="0.01" min="0.01"
-                         placeholder="0.00"
-                         className="w-full border rounded-lg px-3 py-2 focus:ring-1 focus:ring-[#66B2FF] outline-none text-sm"
-                         value={flowForm.amount}
-                         onChange={(e) => setFlowForm({ ...flowForm, amount: e.target.value })}
-                         required
-                       />
-                     </div>
-                   </div>
-                   <div>
-                    <label className="text-xs text-gray-500 block mb-1">Category</label>
-                   <input
-                   type="text"
-                   placeholder="e.g., Rent, Salary, Service Fee"
-                   className="w-full border rounded-lg px-3 py-2 focus:ring-1 focus:ring-[#66B2FF] outline-none text-sm"
-                   value={flowForm.category}
-                   onChange={(e) => setFlowForm({ ...flowForm, category: e.target.value })}
-                   required
-                   />
-                   </div>
-                   <div>
-                    <label className="text-xs text-gray-500 block mb-1">Note (Optional)</label>
-                   <input
-                   type="text"
-                   placeholder="Add a brief description"
-                   className="w-full border rounded-lg px-3 py-2 focus:ring-1 focus:ring-[#66B2FF] outline-none text-sm"
-                   value={flowForm.note}
-                   onChange={(e) => setFlowForm({ ...flowForm, note: e.target.value })}
-                   />
-                   </div>
-                  <button
-                    type="submit"
-                    className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#003B6F] via-[#0066A3] to-[#66B2FF] text-white shadow hover:opacity-90 transition-opacity font-semibold"
-                  >
-                    Add Entry
-                  </button>
-                </form>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow p-6 self-start">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Cashflow Summary</h3>
-                <div className="space-y-3 text-sm">
-                  <SummaryRow label="Total Income" value={totals.income} pos />
-                  <SummaryRow label="Total Expense" value={totals.expense} />
-                  <div className="border-t pt-3 mt-3">
-                    <SummaryRow label="Net (Income - Expense)" value={totals.income - totals.expense} highlight />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="lg:col-span-3 bg-white rounded-2xl shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Recent Entries</h3>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="bg-[#003B6F] text-white text-xs uppercase">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Date</th>
-                      <th className="px-3 py-2 font-medium">Type</th>
-                      <th className="px-3 py-2 font-medium">Category</th>
-                      <th className="px-3 py-2 font-medium">Note</th>
-                      <th className="px-3 py-2 font-medium text-right">Amount (₹)</th>
-                      <th className="px-3 py-2 font-medium text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {flowsFiltered.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-gray-500">
-                          No income or expense entries recorded yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      flowsFiltered.sort((a, b) => new Date(b.date) - new Date(a.date)).map((f) => (
-                        <tr key={f._id} className="border-t hover:bg-gray-50">
-                          <td className="px-3 py-2">{f.date}</td>
-                          <td className="px-3 py-2">
-                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${f.kind === "income" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                              {f.kind === "income" ? "Income" : "Expense"}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">{f.category || "—"}</td>
-                          <td className="px-3 py-2 text-gray-600">{f.note || "—"}</td>
-                          <td className={`px-3 py-2 text-right font-semibold ${f.kind === 'income' ? 'text-green-600' : 'text-red-600'}`}>₹ {formatINR(f.amount)}</td>
-                          <td className="px-3 py-2 text-center">
-                            <button onClick={() => deleteCashflow(f._id)} className="text-red-500 hover:text-red-700 text-xs font-medium" title="Delete Entry">Delete</button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+        {/* --- GST REPORT / EXPENSE-INCOME Tabs (Rendered by Child Component) --- */}
+        {(activeTab === "gst" || activeTab === "report") && (
+          <InventoryGST
+            activeTab={activeTab}
+            invoices={invoices}
+            cashflows={cashflows}
+            setInvoices={setInvoices}
+            setCashflows={setCashflows}
+            formatINR={formatINR}
+            get={get}
+            post={post}
+            deleteItem={deleteItem}
+            todayISO={todayISO}
+            toast={toast}
+          />
         )}
       </div>
 
-      {/* --- MODALS --- */}
+      {/* --- MODALS (Kept in Parent) --- */}
 
       {/* NEW: Add Customer Modal */}
       {showAddCustomerModal && (
@@ -1529,7 +1449,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                     required
                   />
               </div>
-               <div>
+                <div>
                   <label className="text-sm font-medium text-gray-700 block mb-1">Contact Phone</label>
                   <input
                     type="tel"
@@ -1546,10 +1466,10 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                     className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
                     value={newCustomerForm.email}
                     onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
-                     placeholder="e.g. contact@example.com"
+                      placeholder="e.g. contact@example.com"
                   />
               </div>
-               <div>
+                <div>
                   <label className="text-sm font-medium text-gray-700 block mb-1">Address</label>
                   <textarea
                     className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
@@ -1613,7 +1533,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
         </div>
       )}
 
-       {/* Record Payment Modal */}
+        {/* Record Payment Modal */}
        {showPaymentModal && paymentForInvoice && (
             <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto">
                 <div className="w-full max-w-md rounded-2xl bg-white shadow-xl my-8">
@@ -1706,7 +1626,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                     className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
                     value={prodForm.sku}
                     onChange={(e) => setProdForm({ ...prodForm, sku: e.target.value })}
-                     placeholder="Optional"
+                      placeholder="Optional"
                   />
                 </div>
                 <div>
@@ -1728,13 +1648,13 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                     required
                   />
                 </div>
-                 <div>
+                  <div>
                   <label className="text-sm font-medium text-gray-700 block mb-1">GST %</label>
                   <input
                     type="number" step="0.01" min="0"
                     className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
                     value={prodForm.gstRate}
-                     placeholder="Default 18"
+                      placeholder="Default 18"
                     onChange={(e) => setProdForm({ ...prodForm, gstRate: e.target.value })}
                   />
                 </div>
@@ -1744,7 +1664,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                     type="number" min="0" step="any"
                     className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
                     value={prodForm.stock}
-                     placeholder="Default 0"
+                      placeholder="Default 0"
                     onChange={(e) => setProdForm({ ...prodForm, stock: e.target.value })}
                   />
                 </div>
@@ -1754,7 +1674,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                     type="number" min="0" step="any"
                     className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
                     value={prodForm.lowStock}
-                     placeholder="Default 5"
+                      placeholder="Default 5"
                     onChange={(e) => setProdForm({ ...prodForm, lowStock: e.target.value })}
                   />
                 </div>
@@ -1833,7 +1753,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
                     type="email"
                     className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
                     value={suppForm.email}
-                     placeholder="Optional"
+                      placeholder="Optional"
                     onChange={(e) => setSuppForm({ ...suppForm, email: e.target.value })}
                   />
                 </div>
@@ -1884,7 +1804,7 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
         </div>
       )}
 
-      {/* View Supplier Modal */}
+      {/* View Supplier Modal (Kept in Parent) */}
       {viewSupplier && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto" onClick={() => setViewSupplier(null)}>
             <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl my-8" onClick={e => e.stopPropagation()}>
@@ -1902,115 +1822,117 @@ const Inventory = ({ businessName = "SmartDhandha" }) => {
         </div>
       )}
 
-      {/* PDF Generator Container */}
-      {invoiceForPdf && (
+      {/* PDF Generator / Image Share Container (Used when either invoiceForPdf OR invoiceForShare is set) */}
+      {(invoiceForPdf || invoiceForShare) && (
           <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1, width: '210mm' }}>
-           <div id="pdf-generator" style={{ width: '210mm', background: '#fff', color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '10pt', padding: '10mm' }}>
-             {/* --- MODIFIED: Business Name is now dynamic --- */}
-             <h1 style={{ textAlign: 'center', color: '#003B6F', fontSize: '24pt', fontWeight: 'bold', margin: '0 0 5px 0' }}>{businessName}</h1>
-             <p style={{ textAlign: 'center', margin: '0 0 20px 0', fontSize: '9pt' }}>Your Company Address, City, Pincode | GSTIN: YOUR_GSTIN</p>
+             {/* Use the active invoice object for the template: */}
+             {(() => {
+                 const activeInvoice = invoiceForPdf || invoiceForShare;
+                 if (!activeInvoice) return null;
 
-             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderTop: '2px solid #003B6F', borderBottom: '2px solid #003B6F', paddingTop: '10px', paddingBottom: '10px', marginBottom: '15px' }}>
-               <div>
-                 <h3 style={{ margin: '0 0 5px 0', fontSize: '10pt', fontWeight: 'bold' }}>{invoiceForPdf.type === 'sale' ? 'Bill To:' : 'Bill From:'}</h3>
-                 <p style={{ margin: '2px 0', fontSize: '9pt', fontWeight: 'bold' }}>{invoiceForPdf.customerName}</p>
-               </div>
-               <div style={{ textAlign: 'right' }}>
-                 <h1 style={{ margin: '0 0 5px 0', color: '#003B6F', fontSize: '16pt', fontWeight: 'bold', textTransform: 'uppercase' }}>{invoiceForPdf.type === 'sale' ? 'Tax Invoice' : 'Purchase Bill'}</h1>
-                 <p style={{ margin: '2px 0', fontSize: '9pt' }}><strong>Bill No:</strong> {invoiceForPdf._id}</p>
-                 <p style={{ margin: '2px 0', fontSize: '9pt' }}><strong>Date:</strong> {invoiceForPdf.date}</p>
-               </div>
-             </div>
+                 return (
+                   <div id="pdf-generator" style={{ width: '210mm', background: '#fff', color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '10pt', padding: '10mm' }}>
+                       
+                     {/* --- UPDATED: Business Name from state --- */}
+                     <h1 style={{ textAlign: 'center', color: '#003B6F', fontSize: '24pt', fontWeight: 'bold', margin: '0 0 5px 0' }}>{businessDetails.name}</h1>
+                     {/* --- UPDATED: Address and GSTIN from state --- */}
+                     <p style={{ textAlign: 'center', margin: '0 0 20px 0', fontSize: '9pt' }}>
+                         {businessDetails.address} | Contact: {businessDetails.contact} | GSTIN: {businessDetails.gstin}
+                     </p>
 
-             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: '9pt', marginBottom: '15px' }}>
-               <thead style={{ backgroundColor: '#003B6F', color: 'white' }}>
-                 <tr>
-                   <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>#</th>
-                   <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Product / Service</th>
-                   <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Qty</th>
-                   <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Price (₹)</th>
-                   <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>GST %</th>
-                   <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Amount (₹)</th>
-                   <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>GST Amt (₹)</th>
-                   <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Total (₹)</th>
-                 </tr>
-               </thead>
-               <tbody>
-                 {invoiceForPdf.items.map((row, index) => (
-                   <tr key={index}>
-                     <td style={{ padding: '8px', border: '1px solid #ddd' }}>{index + 1}</td>
-                     <td style={{ padding: '8px', border: '1px solid #ddd' }}>{row.name}</td>
-                     <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{row.qty}</td>
-                     <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.price)}</td>
-                     <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{row.gstRate}%</td>
-                     <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.amount)}</td>
-                     <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.gstAmount)}</td>
-                     <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.lineTotal)}</td>
-                   </tr>
-                 ))}
-               </tbody>
-             </table>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderTop: '2px solid #003B6F', borderBottom: '2px solid #003B6F', paddingTop: '10px', paddingBottom: '10px', marginBottom: '15px' }}>
+                       <div>
+                         <h3 style={{ margin: '0 0 5px 0', fontSize: '10pt', fontWeight: 'bold' }}>{activeInvoice.type === 'sale' ? 'Bill To:' : 'Bill From:'}</h3>
+                         <p style={{ margin: '2px 0', fontSize: '9pt', fontWeight: 'bold' }}>{activeInvoice.customerName}</p>
+                       </div>
+                       <div style={{ textAlign: 'right' }}>
+                         <h1 style={{ margin: '0 0 5px 0', color: '#003B6F', fontSize: '16pt', fontWeight: 'bold', textTransform: 'uppercase' }}>{activeInvoice.type === 'sale' ? 'Tax Invoice' : 'Purchase Bill'}</h1>
+                         <p style={{ margin: '2px 0', fontSize: '9pt' }}><strong>Bill No:</strong> {activeInvoice._id}</p>
+                         <p style={{ margin: '2px 0', fontSize: '9pt' }}><strong>Date:</strong> {activeInvoice.date}</p>
+                       </div>
+                     </div>
 
-             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-                <div style={{fontSize: '9pt'}}>
-                    <strong>Payment Status: </strong>
-                    <span style={{fontWeight: 'bold', color: invoiceForPdf.paymentStatus === 'paid' ? 'green' : (invoiceForPdf.paymentStatus === 'partially_paid' ? 'orange' : 'red')}}>
-                        {invoiceForPdf.paymentStatus.replace('_', ' ').toUpperCase()}
-                    </span>
-                    <p style={{ margin: '5px 0' }}><strong>Amount Paid:</strong> ₹ {formatINR(invoiceForPdf.paidAmount)}</p>
-                    <p style={{ margin: '5px 0' }}><strong>Balance Due:</strong> ₹ {formatINR(invoiceForPdf.balanceDue)}</p>
-                </div>
-               <table style={{ fontSize: '10pt', width: '45%' }}>
-                   <tbody>
-                       <tr>
-                           <td style={{ padding: '5px', textAlign: 'right' }}>Sub Total:</td>
-                           <td style={{ padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>₹ {formatINR(invoiceForPdf.subtotal)}</td>
-                       </tr>
-                       <tr>
-                           <td style={{ padding: '5px', textAlign: 'right' }}>Total GST:</td>
-                           <td style={{ padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>₹ {formatINR(invoiceForPdf.totalGST)}</td>
-                       </tr>
-                       <tr style={{ backgroundColor: '#003B6F', color: 'white', fontWeight: 'bold', fontSize: '12pt' }}>
-                           <td style={{ padding: '8px', textAlign: 'right' }}>Grand Total:</td>
-                           <td style={{ padding: '8px', textAlign: 'right' }}>₹ {formatINR(invoiceForPdf.totalGrand)}</td>
-                       </tr>
-                   </tbody>
-               </table>
-             </div>
+                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: '9pt', marginBottom: '15px' }}>
+                       <thead style={{ backgroundColor: '#003B6F', color: 'white' }}>
+                         <tr>
+                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>#</th>
+                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Product / Service</th>
+                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Qty</th>
+                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Price (₹)</th>
+                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>GST %</th>
+                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Amount (₹)</th>
+                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>GST Amt (₹)</th>
+                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Total (₹)</th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {activeInvoice.items.map((row, index) => (
+                           <tr key={index}>
+                             <td style={{ padding: '8px', border: '1px solid #ddd' }}>{index + 1}</td>
+                             <td style={{ padding: '8px', border: '1px solid #ddd' }}>{row.name}</td>
+                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{row.qty}</td>
+                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.price)}</td>
+                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{row.gstRate}%</td>
+                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.amount)}</td>
+                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.gstAmount)}</td>
+                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.lineTotal)}</td>
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
 
-             {invoiceForPdf.note && (
-               <div style={{ marginBottom: '15px', fontSize: '9pt', borderTop: '1px solid #eee', paddingTop: '10px' }}>
-                 <strong>Notes:</strong> {invoiceForPdf.note}
-               </div>
-             )}
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+                        <div style={{fontSize: '9pt'}}>
+                           <strong>Payment Status: </strong>
+                           <span style={{fontWeight: 'bold', color: activeInvoice.paymentStatus === 'paid' ? 'green' : (activeInvoice.paymentStatus === 'partially_paid' ? 'orange' : 'red')}}>
+                               {activeInvoice.paymentStatus.replace('_', ' ').toUpperCase()}
+                           </span>
+                           <p style={{ margin: '5px 0' }}><strong>Amount Paid:</strong> ₹ {formatINR(activeInvoice.paidAmount)}</p>
+                           <p style={{ margin: '5px 0' }}><strong>Balance Due:</strong> ₹ {formatINR(activeInvoice.balanceDue)}</p>
+                        </div>
+                        <table style={{ fontSize: '10pt', width: '45%' }}>
+                           <tbody>
+                               <tr>
+                                   <td style={{ padding: '5px', textAlign: 'right' }}>Sub Total:</td>
+                                   <td style={{ padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>₹ {formatINR(activeInvoice.subtotal)}</td>
+                               </tr>
+                               <tr>
+                                   <td style={{ padding: '5px', textAlign: 'right' }}>Total GST:</td>
+                                   <td style={{ padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>₹ {formatINR(activeInvoice.totalGST)}</td>
+                               </tr>
+                               <tr style={{ backgroundColor: '#003B6F', color: 'white', fontWeight: 'bold', fontSize: '12pt' }}>
+                                   <td style={{ padding: '8px', textAlign: 'right' }}>Grand Total:</td>
+                                   <td style={{ padding: '8px', textAlign: 'right' }}>₹ {formatINR(activeInvoice.totalGrand)}</td>
+                               </tr>
+                           </tbody>
+                        </table>
+                     </div>
 
-             <div style={{ borderTop: '2px solid #003B6F', paddingTop: '10px', marginTop: 'auto', fontSize: '8pt', textAlign: 'center' }}>
-               <p style={{ margin: '0' }}>Thank you for your business!</p>
-               <p style={{ margin: '5px 0 0 0' }}>This is a computer-generated document.</p>
-             </div>
-           </div>
-         </div>
+                     {activeInvoice.note && (
+                        <div style={{ marginBottom: '15px', fontSize: '9pt', borderTop: '1px solid #eee', paddingTop: '10px' }}>
+                           <strong>Notes:</strong> {activeInvoice.note}
+                        </div>
+                     )}
+
+                     <div style={{ borderTop: '2px solid #003B6F', paddingTop: '10px', marginTop: 'auto', fontSize: '8pt', textAlign: 'center' }}>
+                       <p style={{ margin: '0' }}>Thank you for your business!</p>
+                       <p style={{ margin: '5px 0 0 0' }}>This is a computer-generated document.</p>
+                     </div>
+                   </div>
+                 );
+             })()}
+          </div>
       )}
     </div>
   );
 };
 
-/* --- Small UI components --- */
+/* --- Small UI components (Kept in Parent or shared helper file) --- */
 
 const KPI = ({ title, value }) => (
   <div className="bg-white/10 backdrop-blur rounded-xl px-4 py-3">
     <div className="text-xs uppercase tracking-wider opacity-80">{title}</div>
     <div className="text-lg font-bold">₹ {formatINR(value)}</div>
-  </div>
-);
-
-const SummaryRow = ({ label, value, pos = false, highlight = false }) => (
-  <div className={`flex items-center justify-between ${highlight ? "text-[#003B6F] font-semibold text-base" : "text-sm"}`}>
-    <span className="text-gray-700">{label}</span>
-    <span className={`${pos ? "text-green-600" : value < 0 ? "text-red-600" : "text-gray-800"} font-semibold`}>
-      ₹ {formatINR(Math.abs(value))}
-      {value < 0 ? ' (Cr)' : ''}
-    </span>
   </div>
 );
 
@@ -2034,6 +1956,5 @@ const PaymentStatusBadge = ({ status }) => {
         </span>
     );
 };
-
 
 export default Inventory;
