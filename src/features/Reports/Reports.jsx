@@ -1,10 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { get } from '../../services/inventoryService'; 
-import { get as getLedger } from '../../services/ledgerService';
+// Rename imports to avoid conflict between the two 'get' functions
+import { get as getInventory } from '../../services/inventoryService'; 
+import { get as getLedger } from '../../services/ledgerService'; 
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 // --- Helper Functions ---
+
+// Safely converts any date string/object to 'YYYY-MM-DD' for comparison
+const formatApiDate = (dateString) => {
+    if (!dateString) return '';
+    try {
+        // Ensures standard format for comparison regardless of input timestamp format
+        return new Date(dateString).toISOString().slice(0, 10);
+    } catch (e) {
+        return dateString.slice(0, 10);
+    }
+}
+
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const firstDayOfMonthISO = () => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
 const formatINR = (n) => (Number(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -25,7 +38,7 @@ const Reports = () => {
     const [invoices, setInvoices] = useState([]);
     const [products, setProducts] = useState([]);
     const [cashflows, setCashflows] = useState([]);
-    const [ledgers, setLedgers] = useState([]); // 🚨 NEW STATE
+    const [ledgers, setLedgers] = useState([]); 
     const [loading, setLoading] = useState(true);
     const [activeReport, setActiveReport] = useState('p&l'); // Default to Profit & Loss
     const [dateFilter, setDateFilter] = useState({
@@ -38,16 +51,17 @@ const Reports = () => {
         const fetchData = async () => {
             try {
                 setLoading(true);
+                // Use renamed imports
                 const [invoicesData, productsData, cashflowsData, ledgersData] = await Promise.all([
-                    get('invoices'),
-                    get('products'),
-                    get('cashflows'),
-                    get('ledger'), // 🚨 NEW API CALL
+                    getInventory('invoices'), 
+                    getInventory('products'),
+                    getInventory('cashflows'),
+                    getLedger(''), // Assuming getLedger fetches all ledgers
                 ]);
                 setInvoices(invoicesData);
                 setProducts(productsData);
                 setCashflows(cashflowsData);
-                setLedgers(ledgersData); // Set ledger state
+                setLedgers(ledgersData); 
             } catch (err) {
                 toast.error('Failed to fetch report data.');
                 console.error(err);
@@ -62,22 +76,22 @@ const Reports = () => {
     const filteredData = useMemo(() => {
         const { from, to } = dateFilter;
         if (!from || !to) {
-            // Include ledgers in the return object structure
             return { sales: [], purchases: [], expenses: [], ledgers: [] }; 
         }
         
-        const sales = invoices.filter(i => i.type === 'sale' && i.date >= from && i.date <= to);
-        const purchases = invoices.filter(i => i.type === 'purchase' && i.date >= from && i.date <= to);
+        // Apply date filtering to all reports
+        const sales = invoices.filter(i => i.type === 'sale' && formatApiDate(i.date) >= from && formatApiDate(i.date) <= to);
+        const purchases = invoices.filter(i => i.type === 'purchase' && formatApiDate(i.date) >= from && formatApiDate(i.date) <= to);
         
         const expenses = cashflows.filter(c => 
             c.kind === 'expense' && 
             c.category !== 'Product Purchase' && 
-            c.date >= from && 
-            c.date <= to
+            formatApiDate(c.date) >= from && 
+            formatApiDate(c.date) <= to
         );
 
-        // Filter ledger transactions by date range
-        const filteredLedgers = ledgers.filter(l => l.date >= from && l.date <= to);
+        // Apply date filtering to ledgers
+        const filteredLedgers = ledgers.filter(l => formatApiDate(l.date) >= from && formatApiDate(l.date) <= to);
         
         return { sales, purchases, expenses, ledgers: filteredLedgers };
     }, [invoices, cashflows, ledgers, dateFilter]);
@@ -92,7 +106,7 @@ const Reports = () => {
             case 'purchases': return <PurchaseReport purchases={filteredData.purchases} />;
             case 'stock': return <StockReport products={products} />;
             case 'gst': return <GstReport sales={filteredData.sales} purchases={filteredData.purchases} />;
-            case 'ledger': return <LedgerReport ledgers={ledgers} />; // 🚨 NEW REPORT
+            case 'ledger': return <LedgerReport ledgers={filteredData.ledgers} />; 
             case 'p&l':
             default:
                 return <ProfitAndLossStatement data={filteredData} />;
@@ -150,74 +164,108 @@ const Reports = () => {
 
 // --- Ledger Report Component ---
 const LedgerReport = ({ ledgers }) => {
-    // Group transactions by customer/supplier
+    
+    // --- CALCULATING TOTALS (Matching Ledger.jsx logic) ---
+    
+    // 1. Calculate Total Credit (Money IN - what is due to us)
+    const totalCredit = useMemo(() => 
+        ledgers
+            .filter(t => (t.type || '').toLowerCase() === 'credit')
+            .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0)
+    , [ledgers]);
+
+    // 2. Calculate Total Debit (Money OUT - what we owe)
+    const totalDebit = useMemo(() => 
+        ledgers
+            .filter(t => (t.type || '').toLowerCase() === 'debit')
+            .reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0)
+    , [ledgers]);
+
+    // 3. Calculate Net Balance / Position (Credit - Debit)
+    const netBalance = totalCredit - totalDebit;
+
+    // --- CALCULATING PARTY BALANCES (Required for the table display) ---
+
     const ledgerBalances = useMemo(() => {
         const balances = {};
-        // Note: Logic assumes each ledger transaction has 'customerName' or 'supplierName' and 'type' (Credit/Debit)
+        
         ledgers.forEach(l => {
-            const name = l.customerName || l.supplierName || 'Unknown Party'; 
-            const type = l.type; 
+            // Priority for party name fields:
+            const name = l.partyName || l.accountName || l.customerName || l.supplierName || 'Unknown Party'; 
+            
+            const type = (l.type || '').toLowerCase();
+            const amount = parseFloat(l.amount) || 0; 
 
             if (!balances[name]) {
                 balances[name] = { credit: 0, debit: 0, balance: 0, transactions: [] };
             }
 
-            const amount = Number(l.amount) || 0;
-
-            if (type && type.toLowerCase() === 'credit') {
+            if (type === 'credit') {
                 balances[name].credit += amount;
-                balances[name].balance += amount; // Credit increases balance due to us (receivable)
-            } else if (type && type.toLowerCase() === 'debit') {
+                balances[name].balance += amount; 
+            } else if (type === 'debit') {
                 balances[name].debit += amount;
-                balances[name].balance -= amount; // Debit decreases balance due to us (or increases payable)
+                balances[name].balance -= amount; 
             }
             balances[name].transactions.push(l);
         });
+        
         return Object.entries(balances).map(([name, data]) => ({ name, ...data }));
     }, [ledgers]);
 
-    // Calculate overall business status
-    const totalReceivable = ledgerBalances.reduce((sum, b) => sum + (b.balance > 0 ? b.balance : 0), 0);
-    const totalPayable = ledgerBalances.reduce((sum, b) => sum + (b.balance < 0 ? Math.abs(b.balance) : 0), 0);
 
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <KPI title="Total Receivables (To Collect)" value={`₹ ${formatINR(totalReceivable)}`} color="text-green-600" />
-                <KPI title="Total Payables (To Pay)" value={`₹ ${formatINR(totalPayable)}`} color="text-red-600" />
-                <KPI title="Net Position" value={`₹ ${formatINR(totalReceivable - totalPayable)}`} color={totalReceivable - totalPayable >= 0 ? 'text-blue-600' : 'text-orange-500'} />
+                {/* KPI Cards using the direct totalCredit/totalDebit logic */}
+                <KPI title="Total Credit" value={`₹ ${formatINR(totalCredit)}`} color="text-green-600" />
+                <KPI title="Total Debit" value={`₹ ${formatINR(totalDebit)}`} color="text-red-600" />
+                <KPI 
+                    title="Net Position" 
+                    value={`₹ ${formatINR(Math.abs(netBalance))} (${netBalance >= 0 ? 'Receivable' : 'Payable'})`} 
+                    color={netBalance >= 0 ? 'text-blue-600' : 'text-orange-500'} 
+                />
             </div>
-
+            
             <div className="bg-white p-4 rounded-xl shadow-md">
-                <h3 className="font-semibold mb-4">Party Balances (Net Position)</h3>
-                <div className="overflow-y-auto max-h-[60vh]">
-                    <table className="min-w-full text-sm">
-                        <thead className="bg-gray-100 sticky top-0">
-                            <tr>
-                                <th className="px-3 py-2 font-medium text-left">Customer/Supplier</th>
-                                <th className="px-3 py-2 font-medium text-right">Total Credit (Rec.)</th>
+                <h3 className="font-semibold mb-4">Party Balances (Net Position)</h3>
+                <div className="overflow-y-auto max-h-[60vh]">
+                    <table className="min-w-full text-sm">
+                        <thead className="bg-gray-100 sticky top-0">
+                            <tr>
+                                <th className="px-3 py-2 font-medium text-left">Customer/Supplier</th>
+                                <th className="px-3 py-2 font-medium text-right">Total Credit (Rec.)</th>
                                 <th className="px-3 py-2 font-medium text-right">Total Debit (Paid/Due)</th>
-                                <th className="px-3 py-2 font-medium text-right">Net Balance</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {ledgerBalances.map((item, index) => (
-                                <tr key={index} className="border-t">
-                                    <td className="px-3 py-2 font-medium">{item.name}</td>
-                                    <td className="px-3 py-2 text-right text-green-600">₹ {formatINR(item.credit)}</td>
-                                    <td className="px-3 py-2 text-right text-red-600">₹ {formatINR(item.debit)}</td>
-                                    <td className={`px-3 py-2 text-right font-semibold ${item.balance >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-                                        ₹ {formatINR(item.balance)}
+                                <th className="px-3 py-2 font-medium text-right">Net Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {ledgerBalances.length > 0 ? ( 
+                                ledgerBalances.map((item, index) => (
+                                    <tr key={index} className="border-t">
+                                        <td className="px-3 py-2 font-medium">{item.name}</td>
+                                        <td className="px-3 py-2 text-right text-green-600">₹ {formatINR(item.credit)}</td>
+                                        <td className="px-3 py-2 text-right text-red-600">₹ {formatINR(item.debit)}</td>
+                                        <td className={`px-3 py-2 text-right font-semibold ${item.balance >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                                            ₹ {formatINR(item.balance)}
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan="4" className="px-3 py-4 text-center text-gray-500 italic">
+                                        No ledger transactions found for the selected date range.
                                     </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     );
 };
+
 // --- Report Specific Components (Unchanged) ---
 
 const SalesReport = ({ sales, products }) => {
@@ -227,9 +275,11 @@ const SalesReport = ({ sales, products }) => {
     const topSellingProducts = useMemo(() => {
         const productCount = {};
         sales.forEach(inv => {
-            inv.items.forEach(item => {
-                productCount[item.productId] = (productCount[item.productId] || 0) + item.qty;
-            });
+            if(inv.items) { 
+                 inv.items.forEach(item => {
+                     productCount[item.productId] = (productCount[item.productId] || 0) + item.qty;
+                 });
+            }
         });
 
         return Object.entries(productCount)
@@ -275,6 +325,11 @@ const SalesReport = ({ sales, products }) => {
                                     <td className="px-3 py-2 text-right font-semibold">₹ {formatINR(inv.totalGrand)}</td>
                                 </tr>
                             ))}
+                            {sales.length === 0 && (
+                                <tr>
+                                    <td colSpan="3" className="px-3 py-4 text-center text-gray-500 italic">No sales invoices found in this period.</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -312,6 +367,11 @@ const PurchaseReport = ({ purchases }) => {
                                     <td className="px-3 py-2 text-right font-semibold">₹ {formatINR(inv.totalGrand)}</td>
                                 </tr>
                             ))}
+                            {purchases.length === 0 && (
+                                <tr>
+                                    <td colSpan="3" className="px-3 py-4 text-center text-gray-500 italic">No purchase bills found in this period.</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -348,6 +408,11 @@ const StockReport = ({ products }) => {
                                 <td className="px-3 py-2 text-right font-semibold text-blue-600">₹ {formatINR(p.stock * p.unitPrice)}</td>
                             </tr>
                         ))}
+                        {products.length === 0 && (
+                            <tr>
+                                <td colSpan="4" className="px-3 py-4 text-center text-gray-500 italic">No products found.</td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>

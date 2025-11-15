@@ -12,8 +12,6 @@ API.interceptors.request.use((req) => {
   if (token) {
     req.headers.Authorization = `Bearer ${token}`;
   }
-  // Log the request details for debugging
-  // console.log('Sending request to:', req.url, 'with headers:', req.headers);
   return req;
 });
 
@@ -26,7 +24,6 @@ export const get = async (endpoint) => {
     const { data } = await API.get(`/${endpoint}`);
     return data;
   } catch (error) {
-    console.error(`[API GET /ledger/${endpoint}] Failed:`, error.response?.data || error.message);
     throw error.response?.data || error;
   }
 };
@@ -41,7 +38,6 @@ export const post = async (endpoint, bodyData) => {
     const { data } = await API.post(`/${endpoint}`, bodyData);
     return data;
   } catch (error) {
-    console.error(`[API POST /ledger/${endpoint}] Failed:`, error.response?.data || error.message);
     throw error.response?.data || error;
   }
 };
@@ -52,18 +48,16 @@ export const post = async (endpoint, bodyData) => {
  * @param {object} bodyData - The data object to send, MUST include '_id' property
  */
 export const put = async (endpoint, bodyData) => {
-    if (!bodyData._id) {
-        console.error("Missing _id in bodyData for PUT request:", bodyData);
-        throw new Error("ID (_id) is required for PUT requests in bodyData");
-    }
-    const { _id, ...updateData } = bodyData; // Use _id which is standard for MongoDB/Mongoose
-    try {
-        const { data } = await API.put(`/${endpoint}/${_id}`, updateData);
-        return data;
-    } catch (error) {
-        console.error(`[API PUT /ledger/${endpoint}/${_id}] Failed:`, error.response?.data || error.message);
-        throw error.response?.data || error;
-    }
+  if (!bodyData._id) {
+    throw new Error("ID (_id) is required for PUT requests in bodyData");
+  }
+  const { _id, ...updateData } = bodyData; // Use _id which is standard for MongoDB/Mongoose
+  try {
+    const { data } = await API.put(`/${endpoint}/${_id}`, updateData);
+    return data;
+  } catch (error) {
+    throw error.response?.data || error;
+  }
 };
 
 
@@ -77,7 +71,6 @@ export const deleteItem = async (endpoint, id) => {
     const { data } = await API.delete(`/${endpoint}/${id}`);
     return data;
   } catch (error) {
-    console.error(`[API DELETE /ledger/${endpoint}/${id}] Failed:`, error.response?.data || error.message);
     throw error.response?.data || error;
   }
 };
@@ -103,4 +96,3 @@ export const sendWhatsappOffer = (customerId, message) => {
   // Corresponds to POST /api/ledger/customers/:id/send-whatsapp-offer
   return post(`customers/${customerId}/send-whatsapp-offer`, { message });
 };
-

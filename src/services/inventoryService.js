@@ -1,15 +1,13 @@
 import axios from 'axios';
 
-// Create an axios instance for ALL inventory-related routes
-// The specific sub-path (like '/products') will be passed into each function
+
 const API = axios.create({
-  baseURL: 'https://smartbusiness-rr4o.onrender.com/api', // Use the base API URL
+  baseURL: 'https://smartbusiness-rr4o.onrender.com/api', 
 });
 
-// === IMPORTANT: Add the Interceptor ===
-// This function attaches the token to every request
+
 API.interceptors.request.use((req) => {
-  const token = localStorage.getItem('authToken'); // Make sure this key matches where you store the token
+  const token = localStorage.getItem('authToken'); 
   if (token) {
     req.headers.Authorization = `Bearer ${token}`;
   }
@@ -18,7 +16,7 @@ API.interceptors.request.use((req) => {
 
 /**
  * Generic GET function
- * @param {string} endpoint - The specific API endpoint (e.g., 'inventory/products', 'ledger/customers')
+ * @param {string} endpoint 
  */
 export const get = async (endpoint) => {
   const { data } = await API.get(`/${endpoint}`);

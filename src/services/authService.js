@@ -1,44 +1,41 @@
-// src/services/authService.js
 import axios from "axios";
 
+// NOTE: Ensure your BASE_URL points to the correct Express server address.
 const API = axios.create({
-  baseURL: "https://smartbusiness-rr4o.onrender.com/api/auth", // adjust if your routes differ
+    baseURL: "https://smartbusiness-rr4o.onrender.com/api/auth", 
 });
 
-// Register user
+// --- REGISTER (Simplified) ---
+// Now handles direct user creation, no separate sendOtp/register-verify needed
 export const registerUser = async (userData) => {
-  const { data } = await API.post("/register", userData);
-  return data;
+    // userData should contain: fullName, businessName, email, mobile, password
+    // The previous 'otp' field is removed from the payload
+    const { data } = await API.post("/register", userData); 
+    return data;
 };
 
-export const sendOtp = async (email) => {
-  const { data } = await API.post("/send-otp", { email });
-  return data;
-};
+// Removed: export const sendOtp = async (email) => ...
 
-// Login user
+// --- LOGIN ---
 export const loginUser = async (credentials) => {
-  const { data } = await API.post("/login", credentials);
+    const { data } = await API.post("/login", credentials);
 
-  // Store token in localStorage
-  if (data.token) {
-    localStorage.setItem("authToken", data.token);
-  }
+    if (data.token) {
+        localStorage.setItem("authToken", data.token);
+    }
 
-  return data;
+    return data;
 };
 
-// Logout user
+// --- UTILS ---
 export const logoutUser = () => {
-  localStorage.removeItem("authToken");
+    localStorage.removeItem("authToken");
 };
 
-// Get stored token
 export const getToken = () => {
-  return localStorage.getItem("authToken");
+    return localStorage.getItem("authToken");
 };
 
-// Check if user is authenticated
 export const isAuthenticated = () => {
-  return !!localStorage.getItem("authToken");
+    return !!localStorage.getItem("authToken");
 };

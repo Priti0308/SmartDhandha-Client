@@ -11,14 +11,43 @@ import { get, post, put, deleteItem, postInvoice, recordPayment } from "../../se
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// Import the new child component
-import InventoryGST from "./InventoryGST";
+// Import the new child component (assuming it exists or is mocked)
+import InventoryGST from "./InventoryGST"; // Mocked component
 
 /* ---------------------- helpers ---------------------- */
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const formatINR = (n) =>
   (Number(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* ---------------------- Small UI components (Defined here for a complete file) ---------------------- */
+const KPI = ({ title, value }) => (
+  <div className="bg-white/10 backdrop-blur rounded-xl px-4 py-3">
+    <div className="text-xs uppercase tracking-wider opacity-80">{title}</div>
+    <div className="text-lg font-bold">₹ {formatINR(value)}</div>
+  </div>
+);
+
+const DetailRow = ({ label, value, highlight = false }) => (
+    <div className="flex justify-between border-b pb-2">
+        <span className="text-sm text-gray-500">{label}</span>
+        <span className={`text-sm font-medium ${highlight ? 'text-blue-600 font-bold' : 'text-gray-800'}`}>{value || "N/A"}</span>
+    </div>
+);
+
+const PaymentStatusBadge = ({ status }) => {
+    const statusStyles = {
+        paid: 'bg-green-100 text-green-700',
+        partially_paid: 'bg-yellow-100 text-yellow-700',
+        unpaid: 'bg-red-100 text-red-700',
+    };
+    const text = (status || 'unpaid').replace('_', ' ');
+    return (
+        <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize ${statusStyles[status] || statusStyles.unpaid}`}>
+            {text}
+        </span>
+    );
+};
 
 /* ---------------------- Barcode Component ---------------------- */
 const Barcode = ({ value }) => {
@@ -50,7 +79,6 @@ const Barcode = ({ value }) => {
 };
 
 /* ---------------------- Parent Inventory Page ---------------------- */
-// Changed businessName prop to businessNameFallback for clarity, but kept the original signature
 const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => { 
   /* Data stores */
   const [products, setProducts] = useState([]);
@@ -73,10 +101,8 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
   const [viewProduct, setViewProduct] = useState(null);
   const [viewSupplier, setViewSupplier] = useState(null);
 
-  // State for reliable PDF generation
+  // State for reliable PDF/Image generation
   const [invoiceForPdf, setInvoiceForPdf] = useState(null);
-  
-  // --- NEW State for reliable IMAGE generation/sharing ---
   const [invoiceForShare, setInvoiceForShare] = useState(null);
 
   // --- State for Payment Modal ---
@@ -100,19 +126,18 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
     address: ""
   });
 
-  // Data fetching effect (MODIFIED)
+  // Data fetching effect
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Fetch all data concurrently, including the user's business profile
         const [productsData, invoicesData, cashflowsData, suppliersData, customersData, profileData] = await Promise.all([
           get("inventory/products"),
           get("inventory/invoices"),
           get("inventory/cashflows"),
           get("inventory/suppliers"),
           get("inventory/customers"),
-          getProfile() // NEW: Fetch profile data
+          getProfile() 
         ]);
         
         setProducts(productsData);
@@ -121,7 +146,6 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
         setSuppliers(suppliersData);
         setCustomers(customersData);
         
-        // Update business details if profileData is successfully fetched
         if (profileData) {
             setBusinessDetails(prev => ({
                 ...prev,
@@ -131,7 +155,6 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                 contact: profileData.phone || prev.contact
             }));
         }
-        
       } catch (err) {
         toast.error("Failed to fetch initial data. Please try logging in again or refresh.");
         console.error("Fetch Data Error:", err);
@@ -140,45 +163,37 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
       }
     };
     fetchData();
-  }, []); // Empty dependency array means it runs once on mount
+  }, []); 
 
   // Effect hook to handle PDF generation
   useEffect(() => {
     const generatePdf = async () => {
         if (!invoiceForPdf) return;
-
         const element = document.getElementById('pdf-generator');
         if (!element) {
             toast.error("PDF generation failed: Template not found.");
             setInvoiceForPdf(null);
             return;
         }
-
         const loadingToast = toast.info("Generating PDF...", { autoClose: false, closeButton: false });
-
         try {
             await new Promise(resolve => setTimeout(resolve, 50));
-
             const canvas = await html2canvas(element, { scale: 2, useCORS: true, logging: false });
             const imgData = canvas.toDataURL('image/png');
             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const imgProps = pdf.getImageProperties(imgData);
             const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
             let heightLeft = imgHeight;
             let position = 0;
-
             pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
             heightLeft -= pdf.internal.pageSize.getHeight();
-
             while (heightLeft > 0) {
               position = heightLeft - imgHeight;
               pdf.addPage();
               pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
               heightLeft -= pdf.internal.pageSize.getHeight();
             }
-
             pdf.save(`${invoiceForPdf.type === 'sale' ? 'Invoice' : 'Bill'}-${invoiceForPdf.customerName.replace(/ /g, '-')}-${invoiceForPdf.date}.pdf`);
             toast.update(loadingToast, { render: "PDF downloaded! 📥", type: "success", autoClose: 3000 });
         } catch (error) {
@@ -188,27 +203,22 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
             setInvoiceForPdf(null);
         }
     };
-
     generatePdf();
-  }, [invoiceForPdf, businessDetails]); // Added businessDetails dependency
+  }, [invoiceForPdf, businessDetails]); 
 
   // Effect hook to handle Image Generation and Sharing
   useEffect(() => {
     const generateImageAndShare = async () => {
       if (!invoiceForShare) return;
-
       const element = document.getElementById('pdf-generator');
       if (!element) {
         toast.error("Sharing failed: Template not found.");
         setInvoiceForShare(null);
         return;
       }
-
       const loadingToast = toast.info("Generating shareable image...", { autoClose: false, closeButton: false });
-
       try {
         await new Promise(resolve => setTimeout(resolve, 50));
-
         const canvas = await html2canvas(element, { 
             scale: 2, 
             useCORS: true, 
@@ -216,15 +226,12 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
             width: element.offsetWidth,
             height: element.offsetHeight
         });
-
         const imgData = canvas.toDataURL('image/png');
         const fileName = `${invoiceForShare.type === 'sale' ? 'Invoice' : 'Bill'}-${invoiceForShare.customerName.replace(/ /g, '-')}-${invoiceForShare.date}.png`;
         const shareText = `Here is the ${invoiceForShare.type === 'sale' ? 'invoice' : 'bill'} from ${businessDetails.name} for ₹${formatINR(invoiceForShare.totalGrand)}`;
-
         if (navigator.share) {
           const blob = await (await fetch(imgData)).blob();
           const file = new File([blob], fileName, { type: 'image/png' });
-
           await navigator.share({
             title: `${businessDetails.name} - ${invoiceForShare.type === 'sale' ? 'Invoice' : 'Bill'}`,
             text: shareText,
@@ -249,24 +256,23 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
         setInvoiceForShare(null);
       }
     };
-
     generateImageAndShare();
-  }, [invoiceForShare, businessDetails]); // Added businessDetails dependency
+  }, [invoiceForShare, businessDetails]); 
 
 
   /* ---------------------- Top KPIs ---------------------- */
   const totals = useMemo(() => {
     const sales = invoices.filter((i) => i.type === "sale");
     const purchases = invoices.filter((i) => i.type === "purchase");
-    const totalSales = sales.reduce((s, i) => s + i.totalGrand, 0);
-    const totalPurchases = purchases.reduce((s, i) => s + i.totalGrand, 0);
     const outputGST = sales.reduce((s, i) => s + i.totalGST, 0);
     const inputGST = purchases.reduce((s, i) => s + i.totalGST, 0);
     const netGST = outputGST - inputGST;
-    const stockValue = products.reduce((s, p) => s + p.unitPrice * p.stock, 0);
+    // WAC is stored in unitPrice field
+    const stockValue = products.reduce((s, p) => s + Number(p.unitPrice || 0) * Number(p.stock || 0), 0); 
+    const totalSales = sales.reduce((s, i) => s + i.totalGrand, 0);
     const income = cashflows.filter((c) => c.kind === "income").reduce((s, c) => s + Number(c.amount), 0);
     const expense = cashflows.filter((c) => c.kind === "expense").reduce((s, c) => s + Number(c.amount), 0);
-    return { totalSales, totalPurchases, outputGST, inputGST, netGST, stockValue, income, expense };
+    return { totalSales, netGST, stockValue, income, expense };
   }, [invoices, products, cashflows]);
 
   const useCountUp = (value) => value;
@@ -289,17 +295,19 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
     productId: "",
     name: "",
     qty: 1,
-    price: 0,
+    price: 0, 
+    discount: 0, 
     gstRate: 18,
   });
   
-  // Memoized filtered customers for search
-  const filteredCustomers = useMemo(() => {
-    if (!customerSearch) return customers;
-    return customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()));
-  }, [customerSearch, customers]);
+  // Memoized filtered customers/suppliers for search
+  const filteredParties = useMemo(() => {
+    const list = inv.type === 'sale' ? customers : suppliers;
+    if (!customerSearch) return list;
+    return list.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()));
+  }, [customerSearch, customers, suppliers, inv.type]);
 
-  // Handler for customer search input change
+
   const handleCustomerSearchChange = (e) => {
     const value = e.target.value;
     setCustomerSearch(value);
@@ -309,14 +317,12 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
     }
   };
 
-  // Handler for selecting a customer from suggestions
-  const handleSelectCustomer = (customerName) => {
-    setCustomerSearch(customerName);
-    setInv(prev => ({ ...prev, customerName: customerName }));
+  const handleSelectCustomer = (partyName) => {
+    setCustomerSearch(partyName);
+    setInv(prev => ({ ...prev, customerName: partyName }));
     setShowCustomerSuggestions(false);
   };
   
-  // Handler for submitting the Add Customer modal
   const handleAddNewCustomerSubmit = async (e) => {
       e.preventDefault();
       if (!newCustomerForm.name.trim()) {
@@ -325,11 +331,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
       }
       try {
           await post('inventory/customers', newCustomerForm);
-          const updatedCustomers = await get('inventory/customers'); // Refetch customers
+          const updatedCustomers = await get('inventory/customers'); 
           setCustomers(updatedCustomers);
-          
-          handleSelectCustomer(newCustomerForm.name); // Select the newly added customer
-          
+          handleSelectCustomer(newCustomerForm.name); 
           toast.success(`Customer '${newCustomerForm.name}' added! You can now save the invoice.`);
           setShowAddCustomerModal(false);
           setNewCustomerForm({ name: "", phone: "", email: "", address: "" });
@@ -339,80 +343,110 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
       }
   };
 
-    // This function now automatically checks for new customers on blur.
-    const handleCustomerFieldBlur = () => {
-      // A small delay is crucial. It allows the user to click on a suggestion
-      // before the onBlur event hides the suggestion list.
-      setTimeout(() => {
-        setShowCustomerSuggestions(false);
-      
-        const partyName = customerSearch.trim();
-      
-        // This logic should only run for 'sale' invoices and if a name has been typed.
-        if (inv.type === 'sale' && partyName) {
-          // Check if the typed customer name already exists in our list (case-insensitive).
-          const customerExists = customers.some(c => c.name.toLowerCase() === partyName.toLowerCase());
-      
-          // If the customer does NOT exist, automatically open the 'Add Customer' modal.
-          if (!customerExists) {
-            // Pre-fill the new customer form with the name the user typed.
-            setNewCustomerForm({ name: partyName, phone: '', email: '', address: '' });
-            setShowAddCustomerModal(true);
-            toast.info("This is a new customer. Please add their details to continue.");
-          }
+  const handleCustomerFieldBlur = () => {
+    setTimeout(() => {
+      setShowCustomerSuggestions(false);
+      const partyName = customerSearch.trim();
+      if (inv.type === 'sale' && partyName) {
+        const customerExists = customers.some(c => c.name.toLowerCase() === partyName.toLowerCase());
+        if (!customerExists) {
+          setNewCustomerForm({ name: partyName, phone: '', email: '', address: '' });
+          setShowAddCustomerModal(true);
+          toast.info("This is a new customer. Please add their details to continue.");
         }
-      }, 200); // 200ms delay to allow click events to process.
-    };
+      }
+    }, 200); 
+  };
 
-
+  // Effect to update itemForm price/cost based on selected product and invoice type
   useEffect(() => {
     if (itemForm.productId) {
       const product = products.find(p => p._id === itemForm.productId);
       if (product) {
+        let defaultPrice = 0;
+        if (inv.type === 'sale') {
+          defaultPrice = Number(product.sellingPrice || product.unitPrice || 0); 
+        } else {
+          defaultPrice = 0;
+        }
+
         setItemForm(prevForm => ({
           ...prevForm,
-          price: product.unitPrice,
+          price: defaultPrice,
           gstRate: product.gstRate ?? 18,
+          discount: inv.type === 'sale' ? 0 : prevForm.discount, 
         }));
       }
     } else {
-        setItemForm(prevForm => ({...prevForm, price: 0, gstRate: 18}));
+        setItemForm(prevForm => ({...prevForm, price: 0, gstRate: 18, discount: 0}));
     }
-  }, [itemForm.productId, products]);
+  }, [itemForm.productId, products, inv.type]); 
 
   const addItem = () => {
     setShowAddItemModal(true);
-    setItemForm({ productId: "", name: "", qty: 1, price: 0, gstRate: 18 });
+    // Reset item form, price will be set in useEffect upon product selection
+    setItemForm({ productId: "", name: "", qty: 1, price: 0, discount: 0, gstRate: 18 }); 
+  };
+
+  /**
+   * Calculates the line totals.
+   */
+  const calculateLineTotals = (row) => {
+    const qty = Number(row.qty || 0);
+    const basePrice = Number(row.price || 0);
+    const gstRate = Number(row.gstRate || 0);
+    const discount = Number(row.discount || 0); 
+
+    let finalUnitPrice = basePrice;
+    
+    // Apply Discount ONLY for Sales
+    if (inv.type === 'sale' && discount > 0) {
+      finalUnitPrice = basePrice * (1 - discount / 100);
+    }
+
+    const amount = qty * finalUnitPrice;
+    const gstAmount = (amount * gstRate) / 100;
+    const lineTotal = amount + gstAmount;
+
+    return {
+      ...row,
+      // price here is the actual transaction unit price (after discount, before GST)
+      price: finalUnitPrice, 
+      amount,
+      gstAmount,
+      lineTotal
+    };
   };
 
   const handleAddItemSubmit = (e) => {
     e.preventDefault();
     let row = { ...itemForm };
     if (!row.productId) {
-        toast.warn("Please select a product.");
-        return;
+      toast.warn("Please select a product.");
+      return;
     }
     const p = products.find((x) => x._id === row.productId);
-    if (p) {
-        row.name = p.name;
-        row.gstRate = p.gstRate ?? 18;
-    } else {
-        toast.error("Selected product not found.");
-        return;
+    if (!p) {
+      toast.error("Selected product not found.");
+      return;
     }
 
     const qty = Number(row.qty || 0);
     const price = Number(row.price || 0);
     const gstRate = Number(row.gstRate || 0);
+    const discount = Number(row.discount || 0);
 
     if (qty <= 0) { toast.warn("Quantity must be greater than zero."); return; }
     if (price < 0) { toast.warn("Price cannot be negative."); return; }
     if (gstRate < 0) { toast.warn("GST Rate cannot be negative."); return; }
+    if (inv.type === 'sale' && (discount < 0 || discount > 100)) { toast.warn("Discount must be between 0 and 100%."); return; }
 
-    row.amount = qty * price;
-    row.gstAmount = (row.amount * gstRate) / 100;
-    row.lineTotal = row.amount + row.gstAmount;
+
+    row.name = p.name;
+    row.gstRate = p.gstRate ?? 18;
     row.id = uid();
+
+    row = calculateLineTotals(row);
 
     setInv((v) => ({ ...v, items: [...v.items, row] }));
     setShowAddItemModal(false);
@@ -424,30 +458,30 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
     setInv((v) => {
       const items = v.items.map((r) => {
         if (r.id !== rowId) return r;
-        let row = { ...r, [field]: value };
+        
+        const numericValue = ["qty", "price", "gstRate", "discount"].includes(field) ? Number(value || 0) : value;
+        let row = { ...r, [field]: numericValue };
 
         if (field === "productId") {
-          const p = products.find((x) => x._id === value);
+          const p = products.find((x) => x._id === numericValue);
           if (p) {
             row.name = p.name;
-            row.price = p.unitPrice;
             row.gstRate = p.gstRate ?? 18;
+            // Set price to SellingPrice for sale, or 0 for purchase cost manual input.
+            row.price = inv.type === 'sale' ? Number(p.sellingPrice || p.unitPrice || 0) : 0; 
+            row.discount = 0;
           } else {
               row.name = "";
               row.price = 0;
               row.gstRate = 18;
+              row.discount = 0;
           }
         }
-        if (["qty", "price", "gstRate"].includes(field)) {
-          const qty = Number(row.qty || 0);
-          const price = Number(row.price || 0);
-          const gstRate = Number(row.gstRate || 0);
-          if (!isNaN(qty) && !isNaN(price) && !isNaN(gstRate)) {
-            row.amount = qty * price;
-            row.gstAmount = (row.amount * gstRate) / 100;
-            row.lineTotal = row.amount + row.gstAmount;
-          }
+        
+        if (["qty", "price", "gstRate", "discount"].includes(field) || field === "productId") {
+              row = calculateLineTotals(row);
         }
+
         return row;
       });
       return { ...v, items };
@@ -455,9 +489,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
   };
 
   const totalsInvoice = useMemo(() => {
-    const subtotal = inv.items.reduce((s, it) => s + Number(it.amount || 0), 0);
+    const totalGrand = inv.items.reduce((s, it) => s + Number(it.lineTotal || 0), 0); 
     const totalGST = inv.items.reduce((s, it) => s + Number(it.gstAmount || 0), 0);
-    const totalGrand = subtotal + totalGST;
+    const subtotal = inv.items.reduce((s, it) => s + Number(it.amount || 0), 0);
     return { subtotal, totalGST, totalGrand };
   }, [inv.items]);
 
@@ -467,7 +501,6 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
     const partyName = inv.customerName.trim();
     if (!partyName) { toast.warn(`Please select a ${inv.type === 'sale' ? 'Customer' : 'Supplier'}.`); return; }
 
-    // --- Check if customer exists for sales invoices ---
     if (inv.type === 'sale') {
       const customerExists = customers.some(c => c.name.toLowerCase() === partyName.toLowerCase());
       if (!customerExists) {
@@ -485,7 +518,8 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
       items: inv.items.map(({id, ...rest}) => ({
         ...rest,
         qty: Number(rest.qty),
-        price: Number(rest.price),
+        price: Number(rest.price), 
+        discount: Number(rest.discount || 0), 
         gstRate: Number(rest.gstRate),
         amount: Number(rest.amount),
         gstAmount: Number(rest.gstAmount),
@@ -498,71 +532,44 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
     };
 
     try {
-      // 1. Post the invoice/bill and update stock on the server
       const newInvoice = await postInvoice(newInvoiceData);
       
-      // 2. --- START: LOGIC FOR "EQUAL CENTER RATE" / WEIGHTED AVERAGE COST UPDATE ---
+      // --- WAC UPDATE LOGIC ---
       if (newInvoice.type === 'purchase') {
+        const latestProducts = await get("inventory/products"); 
+        
         for (const item of newInvoice.items) {
-          const existingProduct = products.find(p => p._id === item.productId);
-          if (!existingProduct) continue; // Skip if product not found
+          const existingProduct = latestProducts.find(p => p._id === item.productId);
+          if (!existingProduct) continue; 
 
-          // Since postInvoice updates stock *on the server*, we need to infer the stock
-          // *before* this purchase to calculate the correct WAC.
-          // For simplicity, we assume the existingProduct state holds the current average
-          // price, but its stock might be slightly behind the server's update.
-          
           const newPurchaseQty = Number(item.qty);
-          const newPurchaseCost = Number(item.price);
-          const oldAverageCost = Number(existingProduct.unitPrice);
+          const newPurchaseCost = Number(item.price); 
           
-          // Using the current stock as a proxy for the total inventory *after* the purchase.
-          // We must refetch the products *before* this logic for a completely accurate WAC,
-          // but sticking to the current structure, we calculate the WAC relative to the *state*.
+          const oldAverageCost = Number(existingProduct.unitPrice || 0); 
+          const oldStock = Number(existingProduct.stock) - newPurchaseQty; 
           
-          // To implement the WAC based on the purchase:
-          // We must know the stock *before* the transaction. Since we don't have it reliably
-          // without an extra fetch, we use the WAC formula where:
-          // Old Stock + New Purchase Qty = Total New Stock
-          // For now, we rely on the backend to update stock correctly and assume the state's stock 
-          // is the new total stock for WAC calculation.
-          
-          const totalNewStock = Number(existingProduct.stock) + newPurchaseQty; // Approximation
-          const oldStock = Number(existingProduct.stock); // Stock *before* the server side increase
-          
-          let newUnitSalePrice;
+          let newWAC;
           
           if (oldStock <= 0) {
-            // If previous stock was zero or less, the new price is simply the latest purchase cost.
-            newUnitSalePrice = newPurchaseCost; 
+            newWAC = newPurchaseCost; 
           } else {
-            // Weighted Average Cost (WAC): 
-            // New Avg Cost = (Old Stock * Old Avg Cost + New Qty * New Cost) / (Old Stock + New Qty)
             const totalCost = (oldStock * oldAverageCost) + (newPurchaseQty * newPurchaseCost);
-            const totalQty = oldStock + newPurchaseQty; // The total quantity of inventory
-            
-            // The new 'equal center rate'
-            newUnitSalePrice = totalCost / totalQty;
+            const totalQty = oldStock + newPurchaseQty; 
+            newWAC = totalCost / totalQty;
           }
 
-          // Prepare the updated product data to update the unitPrice (Sale Price)
+          // Prepare the update payload for the product's WAC and ensure sellingPrice is included
           const updatedProductData = {
-            ...existingProduct,
             id: existingProduct._id, 
-            unitPrice: Number(newUnitSalePrice).toFixed(2), // Set the new 'equal center rate'
-            lowStock: Number(existingProduct.lowStock || 5),
-            gstRate: Number(existingProduct.gstRate || 18),
-            // The stock field is NOT included as it's handled by postInvoice.
+            unitPrice: Number(newWAC).toFixed(2), 
+            sellingPrice: Number(existingProduct.sellingPrice || 0).toFixed(2), 
           };
-          delete updatedProductData.stock; 
           
-          // Send the PUT request to update the product's unit price (average cost)
           await put('inventory/products', updatedProductData);
         }
       }
-      // 2. --- END: LOGIC FOR "EQUAL CENTER RATE" / WEIGHTED AVERAGE COST UPDATE ---
+      // --- END WAC UPDATE LOGIC ---
       
-      // 3. Refetch all data to update the UI with new stock and price changes
       const [productsData, invoicesData, cashflowsData] = await Promise.all([
         get("inventory/products"),
         get("inventory/invoices"),
@@ -573,8 +580,8 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
       setCashflows(cashflowsData);
 
       setInv({ type: inv.type, date: todayISO(), customerName: "", items: [], note: "" });
-      setCustomerSearch(""); // Clear customer search field
-      toast.success(`${inv.type === 'sale' ? 'Invoice' : 'Purchase Bill'} saved & stock updated!`);
+      setCustomerSearch(""); 
+      toast.success(`${inv.type === 'sale' ? 'Invoice' : 'Purchase Bill'} saved & stock/WAC updated!`);
     } catch (error) {
       toast.error(error.response?.data?.message || `Failed to save ${inv.type === 'sale' ? 'invoice' : 'bill'}.`);
       console.error("Save Invoice Error:", error.response?.data || error);
@@ -585,7 +592,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
     if (window.confirm(`Are you sure you want to delete this ${invoice.type}? This will also delete ALL related payments and reverse stock changes.`)) {
       try {
         await deleteItem('inventory/invoices', invoice._id);
-  
+        
         const [invoicesData, cashflowsData, productsData] = await Promise.all([
             get("inventory/invoices"),
             get("inventory/cashflows"),
@@ -594,7 +601,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
         setInvoices(invoicesData.sort((a, b) => new Date(b.date) - new Date(a.date)));
         setCashflows(cashflowsData);
         setProducts(productsData);
-  
+        
         toast.success("Invoice and related payments deleted successfully!");
       } catch (error) {
         toast.error(error.response?.data?.message || 'Failed to delete invoice.');
@@ -651,7 +658,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
   const [showProductModal, setShowProductModal] = useState(false);
   const [editId, setEditId] = useState(null);
   const [prodForm, setProdForm] = useState({
-    name: "", category: "", sku: "", unitPrice: "", gstRate: 18, stock: "", lowStock: 5, image: ""
+    name: "", category: "", sku: "", unitPrice: "", sellingPrice: "", gstRate: 18, stock: "", lowStock: 5, image: "" 
   });
 
   const handleImageChange = (e) => {
@@ -672,14 +679,17 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
 
   const openAddProduct = () => {
     setEditId(null);
-    setProdForm({ name: "", category: "", sku: "", unitPrice: "", gstRate: 18, stock: "", lowStock: 5, image: "" });
+    setProdForm({ name: "", category: "", sku: "", unitPrice: "", sellingPrice: "", gstRate: 18, stock: "", lowStock: 5, image: "" });
     setShowProductModal(true);
   };
 
   const openEditProduct = (p) => {
     setEditId(p._id);
     setProdForm({
-      name: p.name, category: p.category || "", sku: p.sku || "", unitPrice: p.unitPrice,
+      name: p.name, category: p.category || "", sku: p.sku || "", 
+      unitPrice: p.unitPrice, 
+      // FIX: Ensure sellingPrice is explicitly cast to String for the input field, even if it's 0.
+      sellingPrice: String(p.sellingPrice !== null && p.sellingPrice !== undefined ? p.sellingPrice : 0), 
       gstRate: p.gstRate ?? 18, stock: p.stock, lowStock: p.lowStock ?? 5, image: p.image || ""
     });
     setShowProductModal(true);
@@ -688,29 +698,40 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
   const submitProduct = async (e) => {
     e.preventDefault();
     if (!prodForm.name.trim()) { toast.warn("Product name is required."); return; }
-    const unitPrice = Number(prodForm.unitPrice);
+    
+    // Convert to number for validation/storage
+    const unitPrice = Number(prodForm.unitPrice || 0); 
+    const sellingPrice = Number(prodForm.sellingPrice || 0); 
     const stock = Number(prodForm.stock || 0);
     const lowStock = Number(prodForm.lowStock || 5);
     const gstRate = Number(prodForm.gstRate || 18);
 
-    if (isNaN(unitPrice) || unitPrice < 0) { toast.warn("Please enter a valid Unit Price."); return; }
+    if (isNaN(unitPrice) || unitPrice < 0) { toast.warn("Please enter a valid Cost Price (WAC)."); return; }
+    if (isNaN(sellingPrice) || sellingPrice <= 0) { toast.warn("Please enter a valid positive Selling Price."); return; }
     if (isNaN(stock) || stock < 0) { toast.warn("Please enter a valid Opening Stock (0 or more)."); return; }
     if (isNaN(lowStock) || lowStock < 0) { toast.warn("Please enter a valid Low Stock Alert level (0 or more)."); return; }
     if (isNaN(gstRate) || gstRate < 0) { toast.warn("Please enter a valid GST Rate (0 or more)."); return; }
 
-    const productData = {
+    // This payload contains all fields needed for Add/Edit
+    let productData = {
       ...prodForm,
-      unitPrice, stock, lowStock, gstRate
+      unitPrice, 
+      sellingPrice, 
+      stock, lowStock, gstRate
     };
 
     try {
       if (editId) {
-        await put('inventory/products', { ...productData, id: editId });
+        productData.id = editId;
+        
+        await put('inventory/products', productData);
         toast.success("Product updated successfully! ");
       } else {
         await post('inventory/products', productData);
         toast.success("Product added successfully! ");
       }
+      
+      // FIX: Re-fetch the product list immediately to update the table with the new selling price
       setProducts(await get('inventory/products'));
       setShowProductModal(false);
     } catch (error) {
@@ -784,11 +805,11 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
       const supplier = suppliers.find(s => s._id === id);
       const supplierName = supplier?.name;
       if (supplierName) {
-           const isInPurchaseBill = invoices.some(inv => inv.type === 'purchase' && inv.customerName === supplierName);
-           if (isInPurchaseBill) {
-               toast.error("Cannot delete supplier: They are associated with existing purchase bills.");
-               return;
-           }
+          const isInPurchaseBill = invoices.some(inv => inv.type === 'purchase' && inv.customerName === supplierName);
+          if (isInPurchaseBill) {
+              toast.error("Cannot delete supplier: They are associated with existing purchase bills.");
+              return;
+          }
       }
       if (window.confirm("Are you sure you want to delete this supplier?")) {
         try {
@@ -802,8 +823,8 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
       }
   };
   
-  /* ---------------------- Stock Tracking ---------------------- */
   const [stockSearch, setStockSearch] = useState("");
+
 
   /* ---------------------- UI ---------------------- */
   if (loading) {
@@ -823,7 +844,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
         draggable
         pauseOnHover
       />
-      {/* Top Bar */}
+      {/* ---------------------- Top Bar & KPIs ---------------------- */}
       <div className="bg-gradient-to-r from-[#003B6F] via-[#0066A3] to-[#66B2FF] text-white print:hidden">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -833,7 +854,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full md:w-auto">
               <KPI title="Sales (₹)" value={kpiSales} />
-              <KPI title="Stock Value (₹)" value={kpiStock} />
+              <KPI title="Stock Cost (₹)" value={kpiStock} /> 
               <KPI title="Net GST (₹)" value={kpiNetGST} />
               <KPI title="Net Income (₹)" value={kpiIncome} />
             </div>
@@ -863,8 +884,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
         </div>
       </div>
 
-      {/* Content */}
+      {/* ---------------------- Main Content Area ---------------------- */}
       <div className="max-w-7xl mx-auto px-6 py-8">
+        
         {/* --- CREATE INVOICE / BILL Tab --- */}
         {activeTab === "invoice" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -880,8 +902,8 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                       className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none"
                       value={inv.type}
                       onChange={(e) => {
-                        setInv({ ...inv, type: e.target.value, customerName: "" });
-                        setCustomerSearch(""); // Reset search on type change
+                        setInv({ ...inv, type: e.target.value, customerName: "", items: [] }); 
+                        setCustomerSearch(""); 
                       }}
                     >
                       <option value="sale">Sale Invoice</option>
@@ -897,7 +919,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                       onChange={(e) => setInv({ ...inv, date: e.target.value })}
                     />
                   </div>
-                  {/* --- MODIFIED: Customer/Supplier input --- */}
+                  {/* --- Customer/Supplier input --- */}
                   <div onBlur={handleCustomerFieldBlur}>
                     <label className="text-xs text-gray-500 block mb-1">
                       {inv.type === 'sale' ? 'Customer Name' : 'Supplier Name'}
@@ -914,9 +936,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                           autoComplete="off"
                           required
                         />
-                        {showCustomerSuggestions && filteredCustomers.length > 0 && (
+                        {showCustomerSuggestions && filteredParties.length > 0 && (
                           <ul className="absolute z-20 w-full bg-white border rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-                            {filteredCustomers.map(c => (
+                            {filteredParties.map(c => (
                               <li 
                                 key={c._id} 
                                 className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
@@ -941,7 +963,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                               {s.name}
                             </option>
                           ))}
-                      </select>
+                        </select>
                     )}
                   </div>
                   </div>
@@ -964,9 +986,10 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                         <tr>
                           <th className="px-3 py-2 font-medium">Product</th>
                           <th className="px-3 py-2 font-medium w-24">Qty</th>
-                          <th className="px-3 py-2 font-medium w-28">Price (₹)</th>
+                          <th className="px-3 py-2 font-medium w-28">{inv.type === 'sale' ? 'Sell Price (₹)' : 'Cost (₹)'}</th> 
+                          {inv.type === 'sale' && <th className="px-3 py-2 font-medium w-24">Disc %</th>} 
                           <th className="px-3 py-2 font-medium w-24">GST %</th>
-                          <th className="px-3 py-2 font-medium w-32 text-right">Amount (₹)</th>
+                          <th className="px-3 py-2 font-medium w-32 text-right">Net Amt (₹)</th> 
                           <th className="px-3 py-2 font-medium w-28 text-right">GST (₹)</th>
                           <th className="px-3 py-2 font-medium w-32 text-right">Line Total (₹)</th>
                           <th className="px-3 py-2 font-medium w-20"></th>
@@ -975,7 +998,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                       <tbody>
                         {inv.items.length === 0 ? (
                           <tr>
-                            <td className="px-3 py-4 text-gray-500 text-center text-sm" colSpan={8}>
+                            <td className="px-3 py-4 text-gray-500 text-center text-sm" colSpan={inv.type === 'sale' ? 9 : 8}>
                               No items added yet.
                             </td>
                           </tr>
@@ -995,6 +1018,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                                     </option>
                                   ))}
                                 </select>
+                                {inv.type === 'sale' && row.productId && (
+                                     <div className="text-xs text-gray-500 mt-1">WAC/Cost: ₹ {formatINR(products.find(p => p._id === row.productId)?.unitPrice || 0)}</div>
+                                )}
                               </td>
                               <td className="px-3 py-2 align-top">
                                 <input
@@ -1016,6 +1042,19 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                                   onChange={(e) => onItemChange(row.id, "price", e.target.value)}
                                 />
                               </td>
+                              {inv.type === 'sale' && ( 
+                                <td className="px-3 py-2 align-top">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max="100"
+                                    className="border rounded-lg px-2 py-1.5 w-full focus:ring-1 focus:ring-[#66B2FF] outline-none text-sm"
+                                    value={row.discount}
+                                    onChange={(e) => onItemChange(row.id, "discount", e.target.value)}
+                                  />
+                                </td>
+                              )}
                               <td className="px-3 py-2 align-top">
                                 <input
                                   type="number"
@@ -1043,8 +1082,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                           ))
                         )}
                       </tbody>
-                    </table
-                      >
+                    </table>
                   </div>
                   {/* Totals Section */}
                   <div className="px-4 py-3 grid sm:grid-cols-3 gap-4 border-t">
@@ -1086,7 +1124,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
               </form>
             </div>
 
-            {/* Recent Invoices Sidebar (UPDATED with Share button) */}
+            {/* Recent Invoices Sidebar */}
             <div className="bg-white rounded-2xl shadow p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-3">Recent Activity</h3>
               <div className="space-y-3 max-h-[520px] overflow-auto pr-1 text-sm">
@@ -1109,9 +1147,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                       <div className="mt-2 space-x-2">
                         {i.paymentStatus !== 'paid' && (
                                 <button
-                                    className="px-3 py-1 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
-                                    onClick={() => openPaymentModal(i)}
-                                    title="Record Payment"
+                                  className="px-3 py-1 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
+                                  onClick={() => openPaymentModal(i)}
+                                  title="Record Payment"
                                 >
                                   Record Payment
                                 </button>
@@ -1146,7 +1184,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
           </div>
         )}
 
-        {/* --- ALL INVOICES / BILLS Tab (UPDATED with Share button) --- */}
+        {/* --- ALL INVOICES / BILLS Tab --- */}
         {activeTab === "allInvoices" && (
             <div className="bg-white rounded-2xl shadow p-6">
               <h2 className="text-xl font-semibold text-gray-800 mb-4">All Invoices & Purchase Bills</h2>
@@ -1167,7 +1205,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                         {invoices.length === 0 ? (
                             <tr>
                                <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                                   No invoices or bills found.
+                                       No invoices or bills found.
                                </td>
                             </tr>
                         ) : (
@@ -1186,34 +1224,34 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                                    <td className="px-3 py-2 text-center space-x-2 whitespace-nowrap">
                                     {i.paymentStatus !== 'paid' && (
                                             <button
-                                                className="px-2 py-1 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
-                                                onClick={() => openPaymentModal(i)}
-                                                title="Record Payment"
+                                                 className="px-2 py-1 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
+                                                 onClick={() => openPaymentModal(i)}
+                                                 title="Record Payment"
                                             >
                                                 Pay
                                             </button>
-                                    )}
-                                       <button
-                                           className="px-2 py-1 text-xs rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                           onClick={() => setInvoiceForPdf(i)}
-                                           title="Download PDF"
-                                       >
-                                           PDF
-                                       </button>
-                                       <button
-                                           className="px-2 py-1 text-xs rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
-                                           onClick={() => setInvoiceForShare(i)} 
-                                           title="Share Invoice as Image"
-                                       >
-                                           Share
-                                       </button>
-                                       <button
-                                           className="px-2 py-1 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200"
-                                           onClick={() => deleteInvoice(i)}
-                                           title="Delete Invoice"
-                                       >
-                                           Delete
-                                       </button>
+                                       )}
+                                             <button
+                                                 className="px-2 py-1 text-xs rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                 onClick={() => setInvoiceForPdf(i)}
+                                                 title="Download PDF"
+                                            >
+                                                PDF
+                                            </button>
+                                             <button
+                                                 className="px-2 py-1 text-xs rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                                 onClick={() => setInvoiceForShare(i)} 
+                                                 title="Share Invoice as Image"
+                                            >
+                                                Share
+                                            </button>
+                                             <button
+                                                 className="px-2 py-1 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200"
+                                                 onClick={() => deleteInvoice(i)}
+                                                 title="Delete Invoice"
+                                            >
+                                                Delete
+                                            </button>
                                    </td>
                                 </tr>
                             ))
@@ -1243,7 +1281,8 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                     <th className="px-3 py-2 font-medium">Product</th>
                     <th className="px-3 py-2 font-medium">SKU / Barcode</th>
                     <th className="px-3 py-2 font-medium">Category</th>
-                    <th className="px-3 py-2 font-medium text-right">Unit Price (₹)</th>
+                    <th className="px-3 py-2 font-medium text-right">Cost (WAC) (₹)</th> 
+                    <th className="px-3 py-2 font-medium text-right">Sell Price (₹)</th> 
                     <th className="px-3 py-2 font-medium text-center">GST %</th>
                     <th className="px-3 py-2 font-medium text-center">Stock</th>
                     <th className="px-3 py-2 font-medium text-center">Low Stock</th>
@@ -1253,7 +1292,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                 <tbody>
                   {products.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
+                      <td colSpan={9} className="px-3 py-6 text-center text-gray-500">
                         No products added yet.
                       </td>
                     </tr>
@@ -1261,14 +1300,16 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                     products.map((p) => (
                       <tr key={p._id} className="border-t hover:bg-gray-50">
                         <td className="px-3 py-2 flex items-center gap-3">
-                          {p.image ? <img src={p.image} alt={p.name} className="h-10 w-10 object-cover rounded-md flex-shrink-0" /> : <div className="h-10 w-10 bg-gray-100 rounded-md flex-shrink-0" />}
+                            {p.image ? <img src={p.image} alt={p.name} className="h-10 w-10 object-cover rounded-md flex-shrink-0" /> : <div className="h-10 w-10 bg-gray-100 rounded-md flex-shrink-0" />}
                           <span className="font-medium">{p.name}</span>
                         </td>
                           <td className="px-3 py-2 align-middle">
                               {p.sku ? <Barcode value={p.sku} /> : <span className="text-xs text-gray-400">Not Set</span>}
                           </td>
                         <td className="px-3 py-2 align-middle">{p.category || "—"}</td>
-                        <td className="px-3 py-2 text-right align-middle">₹ {formatINR(p.unitPrice)}</td>
+                        <td className="px-3 py-2 text-right align-middle">₹ {formatINR(p.unitPrice)}</td> 
+                        {/* FIX: Explicitly cast to Number for accurate display, which should be the final fix */}
+                        <td className="px-3 py-2 text-right align-middle font-bold text-green-700">₹ {formatINR(Number(p.sellingPrice || 0))}</td> 
                         <td className="px-3 py-2 text-center align-middle">{p.gstRate ?? 18}%</td>
                         <td className="px-3 py-2 text-center align-middle font-medium">{p.stock}</td>
                         <td className="px-3 py-2 text-center align-middle">{p.lowStock ?? 5}</td>
@@ -1371,7 +1412,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                     <th className="px-3 py-2 font-medium">Category</th>
                     <th className="px-3 py-2 font-medium text-center">Current Stock</th>
                     <th className="px-3 py-2 font-medium text-center">Low Stock Level</th>
-                    <th className="px-3 py-2 font-medium text-right">Unit Price (₹)</th>
+                    <th className="px-3 py-2 font-medium text-right">Cost (WAC) (₹)</th> 
                     <th className="px-3 py-2 font-medium text-right">Stock Value (₹)</th>
                     <th className="px-3 py-2 font-medium text-center">Status</th>
                   </tr>
@@ -1402,9 +1443,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                         </tr>
                       );
                     })}
-                   {products.filter(p => p.name.toLowerCase().includes(stockSearch.toLowerCase()) || (p.sku && p.sku.toLowerCase().includes(stockSearch.toLowerCase()))).length === 0 && (
-                     <tr><td colSpan={8} className="text-center py-4 text-gray-500">No products match your search.</td></tr>
-                   )}
+                    {products.filter(p => p.name.toLowerCase().includes(stockSearch.toLowerCase()) || (p.sku && p.sku.toLowerCase().includes(stockSearch.toLowerCase()))).length === 0 && (
+                       <tr><td colSpan={8} className="text-center py-4 text-gray-500">No products match your search.</td></tr>
+                    )}
                 </tbody>
               </table>
             </div>
@@ -1429,9 +1470,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
         )}
       </div>
 
-      {/* --- MODALS (Kept in Parent) --- */}
+      {/* ---------------------- MODALS ---------------------- */}
 
-      {/* NEW: Add Customer Modal */}
+      {/* Add Customer Modal */}
       {showAddCustomerModal && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl my-8">
@@ -1509,17 +1550,28 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                     <option key={p._id} value={p._id}>{p.name} {p.sku ? `(${p.sku})` : ''}</option>
                   ))}
                 </select>
+                {itemForm.productId && (
+                    <div className="text-sm text-gray-500 mt-2 p-1 bg-gray-50 rounded">
+                      WAC/Cost Price: ₹ {formatINR(products.find(p => p._id === itemForm.productId)?.unitPrice || 0)}
+                    </div>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4"> 
                 <div>
                   <label className="text-sm font-medium text-gray-700 block mb-1">Quantity</label>
                   <input type="number" min="0.001" step="any" className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm" value={itemForm.qty} onChange={(e) => setItemForm({ ...itemForm, qty: e.target.value })} required />
                 </div>
                 <div>
-                   <label className="text-sm font-medium text-gray-700 block mb-1">Price (₹)</label>
+                   <label className="text-sm font-medium text-gray-700 block mb-1">{inv.type === 'sale' ? 'Sell Price (₹)' : 'Cost (₹)'}</label>
                   <input type="number" step="0.01" min="0" className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm" value={itemForm.price} onChange={(e) => setItemForm({ ...itemForm, price: e.target.value })} required />
                 </div>
-                <div>
+                {inv.type === 'sale' && ( 
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Discount %</label>
+                    <input type="number" step="0.01" min="0" max="100" className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm" value={itemForm.discount} onChange={(e) => setItemForm({ ...itemForm, discount: e.target.value })} />
+                  </div>
+                )}
+                <div className={inv.type === 'purchase' ? "col-span-2" : ""}>
                    <label className="text-sm font-medium text-gray-700 block mb-1">GST %</label>
                   <input type="number" step="0.01" min="0" className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm" value={itemForm.gstRate} onChange={(e) => setItemForm({ ...itemForm, gstRate: e.target.value })} required />
                 </div>
@@ -1533,7 +1585,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
         </div>
       )}
 
-        {/* Record Payment Modal */}
+      {/* Record Payment Modal */}
        {showPaymentModal && paymentForInvoice && (
             <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto">
                 <div className="w-full max-w-md rounded-2xl bg-white shadow-xl my-8">
@@ -1639,16 +1691,28 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Unit Price (₹) *</label>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Cost Price (WAC) (₹) *</label>
                   <input
                     type="number" step="0.01" min="0"
                     className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
-                    value={prodForm.unitPrice}
+                    value={prodForm.unitPrice} 
                     onChange={(e) => setProdForm({ ...prodForm, unitPrice: e.target.value })}
+                    required
+                    readOnly={!!editId} // Prevent editing WAC directly if product has been created
+                  />
+                  {!!editId && <p className="text-xs text-red-500 mt-1">Cost is updated via purchases (WAC) only.</p>}
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Selling Price (₹) *</label>
+                  <input
+                    type="number" step="0.01" min="0"
+                    className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
+                    value={prodForm.sellingPrice}
+                    onChange={(e) => setProdForm({ ...prodForm, sellingPrice: e.target.value })}
                     required
                   />
                 </div>
-                  <div>
+                <div>
                   <label className="text-sm font-medium text-gray-700 block mb-1">GST %</label>
                   <input
                     type="number" step="0.01" min="0"
@@ -1666,7 +1730,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                     value={prodForm.stock}
                       placeholder="Default 0"
                     onChange={(e) => setProdForm({ ...prodForm, stock: e.target.value })}
+                    readOnly={!!editId} // Prevent changing stock directly if product has been created
                   />
+                  {!!editId && <p className="text-xs text-red-500 mt-1">Stock is updated via invoices/bills only.</p>}
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700 block mb-1">Low Stock Alert Level</label>
@@ -1694,7 +1760,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                 <button
                   type="button"
                   onClick={() => setShowProductModal(false)}
-                  className="px-4 py-2 rounded-lg border text-sm font-medium text-gray-700 hover:bg-gray-50"
+                   className="px-4 py-2 rounded-lg border text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
@@ -1707,6 +1773,50 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* View Product Modal */}
+      {viewProduct && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto" onClick={() => setViewProduct(null)}>
+            <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl my-8" onClick={e => e.stopPropagation()}>
+                <div className="rounded-t-2xl bg-gradient-to-r from-[#003B6F] via-[#0066A3] to-[#66B2FF] px-6 py-4 text-white flex justify-between items-center">
+                    <div className="text-lg font-semibold">Product Details</div>
+                    <button onClick={() => setViewProduct(null)} className="text-white/80 hover:text-white">&times;</button>
+                </div>
+                <div className="p-6 space-y-4">
+                    {viewProduct.image && <img src={viewProduct.image} alt={viewProduct.name} className="w-32 h-32 object-cover rounded-lg mx-auto border p-1" />}
+                    <DetailRow label="Product Name" value={viewProduct.name} />
+                    <DetailRow label="Category" value={viewProduct.category} />
+                    <DetailRow label="Cost Price (WAC)" value={`₹ ${formatINR(viewProduct.unitPrice)}`} /> 
+                    <DetailRow label="Selling Price" value={`₹ ${formatINR(viewProduct.sellingPrice)}`} /> 
+                    <DetailRow label="GST Rate" value={`${viewProduct.gstRate ?? 18}%`} />
+                    <DetailRow label="Current Stock" value={viewProduct.stock} highlight />
+                    <DetailRow label="Low Stock Level" value={viewProduct.lowStock} />
+                    <div className="pt-4">
+                        <label className="text-sm font-medium text-gray-700 block mb-1">SKU / Barcode</label>
+                        {viewProduct.sku ? <Barcode value={viewProduct.sku} /> : <p className="text-gray-500">Not available</p>}
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* View Supplier Modal */}
+      {viewSupplier && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto" onClick={() => setViewSupplier(null)}>
+            <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl my-8" onClick={e => e.stopPropagation()}>
+                <div className="rounded-t-2xl bg-gradient-to-r from-[#003B6F] via-[#0066A3] to-[#66B2FF] px-6 py-4 text-white flex justify-between items-center">
+                    <div className="text-lg font-semibold">Supplier Details</div>
+                    <button onClick={() => setViewSupplier(null)} className="text-white/80 hover:text-white">&times;</button>
+                </div>
+                <div className="p-6 space-y-2">
+                    <DetailRow label="Supplier Name" value={viewSupplier.name} />
+                    <DetailRow label="Contact Person" value={viewSupplier.contactPerson} />
+                    <DetailRow label="Phone Number" value={viewSupplier.phone} />
+                    <DetailRow label="Email" value={viewSupplier.email} />
+                </div>
+            </div>
         </div>
       )}
 
@@ -1779,182 +1889,106 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
         </div>
       )}
 
-      {/* View Product Modal */}
-      {viewProduct && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto" onClick={() => setViewProduct(null)}>
-            <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl my-8" onClick={e => e.stopPropagation()}>
-                <div className="rounded-t-2xl bg-gradient-to-r from-[#003B6F] via-[#0066A3] to-[#66B2FF] px-6 py-4 text-white flex justify-between items-center">
-                    <div className="text-lg font-semibold">Product Details</div>
-                    <button onClick={() => setViewProduct(null)} className="text-white/80 hover:text-white">&times;</button>
-                </div>
-                <div className="p-6 space-y-4">
-                    {viewProduct.image && <img src={viewProduct.image} alt={viewProduct.name} className="w-32 h-32 object-cover rounded-lg mx-auto border p-1" />}
-                    <DetailRow label="Product Name" value={viewProduct.name} />
-                    <DetailRow label="Category" value={viewProduct.category} />
-                    <DetailRow label="Unit Price" value={`₹ ${formatINR(viewProduct.unitPrice)}`} />
-                    <DetailRow label="GST Rate" value={`${viewProduct.gstRate ?? 18}%`} />
-                    <DetailRow label="Current Stock" value={viewProduct.stock} highlight />
-                    <DetailRow label="Low Stock Level" value={viewProduct.lowStock} />
-                    <div className="pt-4">
-                        <label className="text-sm font-medium text-gray-700 block mb-1">SKU / Barcode</label>
-                        {viewProduct.sku ? <Barcode value={viewProduct.sku} /> : <p className="text-gray-500">Not available</p>}
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* View Supplier Modal (Kept in Parent) */}
-      {viewSupplier && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 overflow-y-auto" onClick={() => setViewSupplier(null)}>
-            <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl my-8" onClick={e => e.stopPropagation()}>
-                <div className="rounded-t-2xl bg-gradient-to-r from-[#003B6F] via-[#0066A3] to-[#66B2FF] px-6 py-4 text-white flex justify-between items-center">
-                    <div className="text-lg font-semibold">Supplier Details</div>
-                    <button onClick={() => setViewSupplier(null)} className="text-white/80 hover:text-white">&times;</button>
-                </div>
-                <div className="p-6 space-y-2">
-                    <DetailRow label="Supplier Name" value={viewSupplier.name} />
-                    <DetailRow label="Contact Person" value={viewSupplier.contactPerson} />
-                    <DetailRow label="Phone Number" value={viewSupplier.phone} />
-                    <DetailRow label="Email" value={viewSupplier.email} />
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* PDF Generator / Image Share Container (Used when either invoiceForPdf OR invoiceForShare is set) */}
+      {/* PDF Generator / Image Share Container */}
       {(invoiceForPdf || invoiceForShare) && (
           <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1, width: '210mm' }}>
-             {/* Use the active invoice object for the template: */}
-             {(() => {
-                 const activeInvoice = invoiceForPdf || invoiceForShare;
-                 if (!activeInvoice) return null;
+               {(() => {
+                   const activeInvoice = invoiceForPdf || invoiceForShare;
+                   if (!activeInvoice) return null;
 
-                 return (
-                   <div id="pdf-generator" style={{ width: '210mm', background: '#fff', color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '10pt', padding: '10mm' }}>
-                       
-                     {/* --- UPDATED: Business Name from state --- */}
-                     <h1 style={{ textAlign: 'center', color: '#003B6F', fontSize: '24pt', fontWeight: 'bold', margin: '0 0 5px 0' }}>{businessDetails.name}</h1>
-                     {/* --- UPDATED: Address and GSTIN from state --- */}
-                     <p style={{ textAlign: 'center', margin: '0 0 20px 0', fontSize: '9pt' }}>
-                         {businessDetails.address} | Contact: {businessDetails.contact} | GSTIN: {businessDetails.gstin}
-                     </p>
+                   return (
+                      <div id="pdf-generator" style={{ width: '210mm', background: '#fff', color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '10pt', padding: '10mm' }}>
+                            
+                           <h1 style={{ textAlign: 'center', color: '#003B6F', fontSize: '24pt', fontWeight: 'bold', margin: '0 0 5px 0' }}>{businessDetails.name}</h1>
+                           <p style={{ textAlign: 'center', margin: '0 0 20px 0', fontSize: '9pt' }}>
+                               {businessDetails.address} | Contact: {businessDetails.contact} | GSTIN: {businessDetails.gstin}
+                           </p>
 
-                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderTop: '2px solid #003B6F', borderBottom: '2px solid #003B6F', paddingTop: '10px', paddingBottom: '10px', marginBottom: '15px' }}>
-                       <div>
-                         <h3 style={{ margin: '0 0 5px 0', fontSize: '10pt', fontWeight: 'bold' }}>{activeInvoice.type === 'sale' ? 'Bill To:' : 'Bill From:'}</h3>
-                         <p style={{ margin: '2px 0', fontSize: '9pt', fontWeight: 'bold' }}>{activeInvoice.customerName}</p>
-                       </div>
-                       <div style={{ textAlign: 'right' }}>
-                         <h1 style={{ margin: '0 0 5px 0', color: '#003B6F', fontSize: '16pt', fontWeight: 'bold', textTransform: 'uppercase' }}>{activeInvoice.type === 'sale' ? 'Tax Invoice' : 'Purchase Bill'}</h1>
-                         <p style={{ margin: '2px 0', fontSize: '9pt' }}><strong>Bill No:</strong> {activeInvoice._id}</p>
-                         <p style={{ margin: '2px 0', fontSize: '9pt' }}><strong>Date:</strong> {activeInvoice.date}</p>
-                       </div>
-                     </div>
+                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderTop: '2px solid #003B6F', borderBottom: '2px solid #003B6F', paddingTop: '10px', paddingBottom: '10px', marginBottom: '15px' }}>
+                             <div>
+                                <h3 style={{ margin: '0 0 5px 0', fontSize: '10pt', fontWeight: 'bold' }}>{activeInvoice.type === 'sale' ? 'Bill To:' : 'Bill From:'}</h3>
+                                <p style={{ margin: '2px 0', fontSize: '9pt', fontWeight: 'bold' }}>{activeInvoice.customerName}</p>
+                             </div>
+                             <div style={{ textAlign: 'right' }}>
+                                <h1 style={{ margin: '0 0 5px 0', color: '#003B6F', fontSize: '16pt', fontWeight: 'bold', textTransform: 'uppercase' }}>{activeInvoice.type === 'sale' ? 'Tax Invoice' : 'Purchase Bill'}</h1>
+                                <p style={{ margin: '2px 0', fontSize: '9pt' }}><strong>Bill No:</strong> {activeInvoice._id}</p>
+                                <p style={{ margin: '2px 0', fontSize: '9pt' }}><strong>Date:</strong> {activeInvoice.date}</p>
+                             </div>
+                           </div>
 
-                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: '9pt', marginBottom: '15px' }}>
-                       <thead style={{ backgroundColor: '#003B6F', color: 'white' }}>
-                         <tr>
-                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>#</th>
-                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Product / Service</th>
-                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Qty</th>
-                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Price (₹)</th>
-                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>GST %</th>
-                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Amount (₹)</th>
-                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>GST Amt (₹)</th>
-                           <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Total (₹)</th>
-                         </tr>
-                       </thead>
-                       <tbody>
-                         {activeInvoice.items.map((row, index) => (
-                           <tr key={index}>
-                             <td style={{ padding: '8px', border: '1px solid #ddd' }}>{index + 1}</td>
-                             <td style={{ padding: '8px', border: '1px solid #ddd' }}>{row.name}</td>
-                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{row.qty}</td>
-                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.price)}</td>
-                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{row.gstRate}%</td>
-                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.amount)}</td>
-                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.gstAmount)}</td>
-                             <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.lineTotal)}</td>
-                           </tr>
-                         ))}
-                       </tbody>
-                     </table>
-
-                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-                        <div style={{fontSize: '9pt'}}>
-                           <strong>Payment Status: </strong>
-                           <span style={{fontWeight: 'bold', color: activeInvoice.paymentStatus === 'paid' ? 'green' : (activeInvoice.paymentStatus === 'partially_paid' ? 'orange' : 'red')}}>
-                               {activeInvoice.paymentStatus.replace('_', ' ').toUpperCase()}
-                           </span>
-                           <p style={{ margin: '5px 0' }}><strong>Amount Paid:</strong> ₹ {formatINR(activeInvoice.paidAmount)}</p>
-                           <p style={{ margin: '5px 0' }}><strong>Balance Due:</strong> ₹ {formatINR(activeInvoice.balanceDue)}</p>
-                        </div>
-                        <table style={{ fontSize: '10pt', width: '45%' }}>
-                           <tbody>
+                           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: '9pt', marginBottom: '15px' }}>
+                             <thead style={{ backgroundColor: '#003B6F', color: 'white' }}>
                                <tr>
-                                   <td style={{ padding: '5px', textAlign: 'right' }}>Sub Total:</td>
-                                   <td style={{ padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>₹ {formatINR(activeInvoice.subtotal)}</td>
+                                 <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>#</th>
+                                 <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Product / Service</th>
+                                 <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Qty</th>
+                                 <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Price (₹)</th>
+                                 <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{activeInvoice.type === 'sale' ? 'Disc %' : 'GST %'}</th> 
+                                 <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Net Amt (₹)</th>
+                                 <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>GST Amt (₹)</th>
+                                 <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>Total (₹)</th>
                                </tr>
-                               <tr>
-                                   <td style={{ padding: '5px', textAlign: 'right' }}>Total GST:</td>
-                                   <td style={{ padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>₹ {formatINR(activeInvoice.totalGST)}</td>
-                               </tr>
-                               <tr style={{ backgroundColor: '#003B6F', color: 'white', fontWeight: 'bold', fontSize: '12pt' }}>
-                                   <td style={{ padding: '8px', textAlign: 'right' }}>Grand Total:</td>
-                                   <td style={{ padding: '8px', textAlign: 'right' }}>₹ {formatINR(activeInvoice.totalGrand)}</td>
-                               </tr>
-                           </tbody>
-                        </table>
-                     </div>
+                             </thead>
+                             <tbody>
+                               {activeInvoice.items.map((row, index) => (
+                                 <tr key={index}>
+                                    <td style={{ padding: '8px', border: '1px solid #ddd' }}>{index + 1}</td>
+                                    <td style={{ padding: '8px', border: '1px solid #ddd' }}>{row.name}</td>
+                                    <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{row.qty}</td>
+                                    <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.price)}</td>
+                                    <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{activeInvoice.type === 'sale' ? `${row.discount}%` : `${row.gstRate}%`}</td> 
+                                    <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.amount)}</td>
+                                    <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.gstAmount)}</td>
+                                    <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'right' }}>{formatINR(row.lineTotal)}</td>
+                                 </tr>
+                               ))}
+                             </tbody>
+                           </table>
 
-                     {activeInvoice.note && (
-                        <div style={{ marginBottom: '15px', fontSize: '9pt', borderTop: '1px solid #eee', paddingTop: '10px' }}>
-                           <strong>Notes:</strong> {activeInvoice.note}
-                        </div>
-                     )}
+                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+                              <div style={{fontSize: '9pt'}}>
+                                 <strong>Payment Status: </strong>
+                                 <span style={{fontWeight: 'bold', color: activeInvoice.paymentStatus === 'paid' ? 'green' : (activeInvoice.paymentStatus === 'partially_paid' ? 'orange' : 'red')}}>
+                                     {activeInvoice.paymentStatus.replace('_', ' ').toUpperCase()}
+                                 </span>
+                                 <p style={{ margin: '5px 0' }}><strong>Amount Paid:</strong> ₹ {formatINR(activeInvoice.paidAmount)}</p>
+                                 <p style={{ margin: '5px 0' }}><strong>Balance Due:</strong> ₹ {formatINR(activeInvoice.balanceDue)}</p>
+                              </div>
+                              <table style={{ fontSize: '10pt', width: '45%' }}>
+                                 <tbody>
+                                      <tr>
+                                          <td style={{ padding: '5px', textAlign: 'right' }}>Sub Total:</td>
+                                          <td style={{ padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>₹ {formatINR(activeInvoice.subtotal)}</td>
+                                      </tr>
+                                      <tr>
+                                          <td style={{ padding: '5px', textAlign: 'right' }}>Total GST:</td>
+                                          <td style={{ padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>₹ {formatINR(activeInvoice.totalGST)}</td>
+                                      </tr>
+                                      <tr style={{ backgroundColor: '#003B6F', color: 'white', fontWeight: 'bold', fontSize: '12pt' }}>
+                                          <td style={{ padding: '8px', textAlign: 'right' }}>Grand Total:</td>
+                                          <td style={{ padding: '8px', textAlign: 'right' }}>₹ {formatINR(activeInvoice.totalGrand)}</td>
+                                      </tr>
+                                 </tbody>
+                              </table>
+                           </div>
 
-                     <div style={{ borderTop: '2px solid #003B6F', paddingTop: '10px', marginTop: 'auto', fontSize: '8pt', textAlign: 'center' }}>
-                       <p style={{ margin: '0' }}>Thank you for your business!</p>
-                       <p style={{ margin: '5px 0 0 0' }}>This is a computer-generated document.</p>
-                     </div>
-                   </div>
-                 );
-             })()}
+                           {activeInvoice.note && (
+                               <div style={{ marginBottom: '15px', fontSize: '9pt', borderTop: '1px solid #eee', paddingTop: '10px' }}>
+                                   <strong>Notes:</strong> {activeInvoice.note}
+                               </div>
+                           )}
+
+                           <div style={{ borderTop: '2px solid #003B6F', paddingTop: '10px', marginTop: 'auto', fontSize: '8pt', textAlign: 'center' }}>
+                               <p style={{ margin: '0' }}>Thank you for your business!</p>
+                               <p style={{ margin: '5px 0 0 0' }}>This is a computer-generated document.</p>
+                           </div>
+                      </div>
+                   );
+               })()}
           </div>
       )}
     </div>
   );
-};
-
-/* --- Small UI components (Kept in Parent or shared helper file) --- */
-
-const KPI = ({ title, value }) => (
-  <div className="bg-white/10 backdrop-blur rounded-xl px-4 py-3">
-    <div className="text-xs uppercase tracking-wider opacity-80">{title}</div>
-    <div className="text-lg font-bold">₹ {formatINR(value)}</div>
-  </div>
-);
-
-const DetailRow = ({ label, value, highlight = false }) => (
-    <div className="flex justify-between border-b pb-2">
-        <span className="text-sm text-gray-500">{label}</span>
-        <span className={`text-sm font-medium ${highlight ? 'text-blue-600 font-bold' : 'text-gray-800'}`}>{value || "N/A"}</span>
-    </div>
-);
-
-const PaymentStatusBadge = ({ status }) => {
-    const statusStyles = {
-        paid: 'bg-green-100 text-green-700',
-        partially_paid: 'bg-yellow-100 text-yellow-700',
-        unpaid: 'bg-red-100 text-red-700',
-    };
-    const text = (status || 'unpaid').replace('_', ' ');
-    return (
-        <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize ${statusStyles[status] || statusStyles.unpaid}`}>
-            {text}
-        </span>
-    );
 };
 
 export default Inventory;
