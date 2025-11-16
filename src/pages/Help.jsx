@@ -14,7 +14,7 @@ const PrarambhSupportCard = () => {
     const supportData = {
         name: 'Prarambh Pvt. Ltd.', // Changed to Pvt. Ltd.
         tagline: 'Committed to your business success.',
-        contactNumber: '+91 82083 15170', 
+        contactNumber: '+91 8446348461', 
         website: BASE_URL,
         officeAddress: '505, Shivcity Center,\nVijaynagar, Sangli – 416416, Maharashtra, India',
     };

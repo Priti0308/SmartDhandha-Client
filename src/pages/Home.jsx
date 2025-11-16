@@ -69,7 +69,7 @@ const Navbar = () => {
         <div className="flex justify-between items-center">
           {/* Brand Logo/Name */}
           <Link to="/" className="text-2xl font-bold text-[#003B6F]">
-            SmartDhandha
+            SmartBusiness
           </Link>
 
           {/* Desktop Menu */}
