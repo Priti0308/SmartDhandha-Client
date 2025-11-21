@@ -309,7 +309,7 @@ const Home = () => {
         <div className="container mx-auto px-6 py-12">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
             <div className="sm:col-span-2 md:col-span-1">
-              <h3 className="text-white font-bold text-2xl mb-2">SmartDhandha</h3>
+              <h3 className="text-white font-bold text-2xl mb-2">SmartBusiness</h3>
               <p className="text-sm">
                 The all-in-one solution to digitize and grow your business.
               </p>
@@ -341,7 +341,7 @@ const Home = () => {
             </div>
           </div>
           <div className="mt-12 pt-8 border-t border-gray-800 text-center text-sm">
-            <p>&copy; {new Date().getFullYear()} Prarambh Pvt.Ltd All Rights Reserved.</p>
+            <p>&copy; {new Date().getFullYear()} Varad Consultants & Analysts Pvt.Ltd All Rights Reserved.</p>
           </div>
         </div>
       </footer>

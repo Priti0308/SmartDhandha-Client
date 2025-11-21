@@ -7,12 +7,12 @@ import { QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
 // Define the primary blue color (matching your project's style: #00264B)
 const PRIMARY_BLUE = '#00264B'; 
 const ACCENT_BLUE = '#0173AE'; 
-const BASE_URL = 'www.prambh-pvt-ltd.com'; // Placeholder for the new name
+const BASE_URL = 'www.varadanalyst.com'; // Placeholder for the new name
 
 const PrarambhSupportCard = () => {
     // UPDATED: Company name and data
     const supportData = {
-        name: 'Prarambh Pvt. Ltd.', // Changed to Pvt. Ltd.
+        name: 'Varad Consultants & Analysts Pvt.Ltd', // Changed to Pvt. Ltd.
         tagline: 'Committed to your business success.',
         contactNumber: '+91 8446348461', 
         website: BASE_URL,
