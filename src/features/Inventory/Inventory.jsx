@@ -109,9 +109,8 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentForInvoice, setPaymentForInvoice] = useState(null);
   const [paymentForm, setPaymentForm] = useState({
-    amount: "",
+    amounts: { Cash: "", Bank: "", UPI: "", Cheque: "" },
     date: todayISO(),
-    paymentMethod: "Cash",
     note: "",
   });
 
@@ -467,7 +466,6 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
           if (p) {
             row.name = p.name;
             row.gstRate = p.gstRate ?? 18;
-            // Set price to SellingPrice for sale, or 0 for purchase cost manual input.
             row.price = inv.type === 'sale' ? Number(p.sellingPrice || p.unitPrice || 0) : 0; 
             row.discount = 0;
           } else {
@@ -558,7 +556,6 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
             newWAC = totalCost / totalQty;
           }
 
-          // Prepare the update payload for the product's WAC and ensure sellingPrice is included
           const updatedProductData = {
             id: existingProduct._id, 
             unitPrice: Number(newWAC).toFixed(2), 
@@ -614,28 +611,47 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
   const openPaymentModal = (invoice) => {
     setPaymentForInvoice(invoice);
     setPaymentForm({
-      amount: invoice.balanceDue?.toFixed(2) || "",
+      amounts: { Cash: invoice.balanceDue?.toFixed(2) || "", Bank: "", UPI: "", Cheque: "" },
       date: todayISO(),
-      paymentMethod: "Cash",
       note: `Payment for ${invoice.type === 'sale' ? 'Invoice' : 'Bill'}`
     });
     setShowPaymentModal(true);
   };
 
+  const handlePaymentAmountChange = (method, value) => {
+    setPaymentForm(prev => ({
+        ...prev,
+        amounts: { ...prev.amounts, [method]: value }
+    }));
+  };
+
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
-    const amount = Number(paymentForm.amount);
-    if (isNaN(amount) || amount <= 0) {
+    
+    const totalPayment = Object.values(paymentForm.amounts).reduce((sum, val) => sum + Number(val || 0), 0);
+    
+    if (isNaN(totalPayment) || totalPayment <= 0) {
       toast.warn("Please enter a valid positive payment amount.");
       return;
     }
-    if (amount > (paymentForInvoice.balanceDue + 0.01)) {
+    if (totalPayment > (paymentForInvoice.balanceDue + 0.01)) {
         toast.error(`Payment cannot exceed balance due of ₹${formatINR(paymentForInvoice.balanceDue)}.`);
         return;
     }
 
     try {
-        await recordPayment(paymentForInvoice._id, paymentForm);
+        // Construct the methods string (e.g., "Cash: 600, UPI: 500")
+        const finalMethod = Object.entries(paymentForm.amounts)
+            .filter(([m, a]) => Number(a) > 0)
+            .map(([m, a]) => `${m}: ₹${a}`)
+            .join(" + ");
+
+        await recordPayment(paymentForInvoice._id, { 
+            amount: totalPayment,
+            paymentMethod: finalMethod,
+            date: paymentForm.date,
+            note: paymentForm.note
+        });
 
         const [invoicesData, cashflowsData] = await Promise.all([
             get("inventory/invoices"),
@@ -988,9 +1004,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                           <th className="px-3 py-2 font-medium w-24">Qty</th>
                           <th className="px-3 py-2 font-medium w-28">{inv.type === 'sale' ? 'Sell Price (₹)' : 'Cost (₹)'}</th> 
                           {inv.type === 'sale' && <th className="px-3 py-2 font-medium w-24">Disc %</th>} 
-                          <th className="px-3 py-2 font-medium w-24">GST %</th>
                           <th className="px-3 py-2 font-medium w-32 text-right">Net Amt (₹)</th> 
-                          <th className="px-3 py-2 font-medium w-28 text-right">GST (₹)</th>
                           <th className="px-3 py-2 font-medium w-32 text-right">Line Total (₹)</th>
                           <th className="px-3 py-2 font-medium w-20"></th>
                         </tr>
@@ -998,7 +1012,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                       <tbody>
                         {inv.items.length === 0 ? (
                           <tr>
-                            <td className="px-3 py-4 text-gray-500 text-center text-sm" colSpan={inv.type === 'sale' ? 9 : 8}>
+                            <td className="px-3 py-4 text-gray-500 text-center text-sm" colSpan={inv.type === 'sale' ? 7 : 6}>
                               No items added yet.
                             </td>
                           </tr>
@@ -1055,18 +1069,8 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                                   />
                                 </td>
                               )}
-                              <td className="px-3 py-2 align-top">
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  className="border rounded-lg px-2 py-1.5 w-full focus:ring-1 focus:ring-[#66B2FF] outline-none text-sm"
-                                  value={row.gstRate}
-                                  onChange={(e) => onItemChange(row.id, "gstRate", e.target.value)}
-                                />
-                              </td>
+                              {/* Removed GST visual inline edit field from table based on request */}
                               <td className="px-3 py-2 text-right align-top">₹ {formatINR(row.amount)}</td>
-                              <td className="px-3 py-2 text-right align-top">₹ {formatINR(row.gstAmount)}</td>
                               <td className="px-3 py-2 text-right align-top font-semibold">₹ {formatINR(row.lineTotal)}</td>
                               <td className="px-3 py-2 text-center align-top">
                                 <button
@@ -1556,7 +1560,9 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                     </div>
                 )}
               </div>
-              <div className="grid grid-cols-4 gap-4"> 
+              
+              {/* Grid Updated & GST field removed from here */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4"> 
                 <div>
                   <label className="text-sm font-medium text-gray-700 block mb-1">Quantity</label>
                   <input type="number" min="0.001" step="any" className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm" value={itemForm.qty} onChange={(e) => setItemForm({ ...itemForm, qty: e.target.value })} required />
@@ -1571,10 +1577,6 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                     <input type="number" step="0.01" min="0" max="100" className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm" value={itemForm.discount} onChange={(e) => setItemForm({ ...itemForm, discount: e.target.value })} />
                   </div>
                 )}
-                <div className={inv.type === 'purchase' ? "col-span-2" : ""}>
-                   <label className="text-sm font-medium text-gray-700 block mb-1">GST %</label>
-                  <input type="number" step="0.01" min="0" className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm" value={itemForm.gstRate} onChange={(e) => setItemForm({ ...itemForm, gstRate: e.target.value })} required />
-                </div>
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 mt-4">
                 <button type="button" onClick={() => setShowAddItemModal(false)} className="px-4 py-2 rounded-lg border text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
@@ -1593,46 +1595,46 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                         <div className="text-lg font-semibold">Record Payment</div>
                         <p className="text-sm text-white/80">For {paymentForInvoice.customerName}</p>
                     </div>
-                    <form onSubmit={handlePaymentSubmit} className="p-6 space-y-4">
-                        <div className="text-center">
-                            <label className="text-sm text-gray-500">Balance Due</label>
+                    <form onSubmit={handlePaymentSubmit} className="p-6 space-y-5">
+                        <div className="text-center bg-red-50 py-3 rounded-lg border border-red-100">
+                            <label className="text-sm font-medium text-red-800">Balance Due</label>
                             <p className="text-3xl font-bold text-red-600">₹ {formatINR(paymentForInvoice.balanceDue)}</p>
                         </div>
-                        <div>
-                            <label className="text-sm font-medium text-gray-700 block mb-1">Amount to Pay *</label>
-                            <input
-                                type="number" step="0.01" min="0.01" max={paymentForInvoice.balanceDue?.toFixed(2)}
-                                className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-lg"
-                                value={paymentForm.amount}
-                                onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                                required
-                                autoFocus
-                            />
+                        
+                        <div className="space-y-3">
+                            <label className="text-sm font-medium text-gray-700 block mb-1">Enter Amounts by Payment Mode *</label>
+                            {["Cash", "Bank", "UPI", "Cheque"].map(method => (
+                                <div key={method} className="flex items-center gap-3">
+                                    <div className="w-24 text-sm font-medium text-gray-600">{method}</div>
+                                    <input
+                                        type="number" step="0.01" min="0" max={paymentForInvoice.balanceDue?.toFixed(2)}
+                                        className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
+                                        value={paymentForm.amounts[method] || ""}
+                                        onChange={(e) => handlePaymentAmountChange(method, e.target.value)}
+                                        placeholder={`Amount in ${method}`}
+                                    />
+                                </div>
+                            ))}
+                            
+                            {/* Real-time Total Calculation */}
+                            <div className="flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100 mt-4">
+                                <span className="font-semibold text-[#003B6F]">Total Paying:</span>
+                                <span className="font-bold text-xl text-[#0066A3]">
+                                    ₹ {formatINR(Object.values(paymentForm.amounts).reduce((s, v) => s + Number(v || 0), 0))}
+                                </span>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+
+                        <div className="grid grid-cols-1 gap-4">
                             <div>
                                 <label className="text-sm font-medium text-gray-700 block mb-1">Payment Date *</label>
                                 <input
                                     type="date"
-                                    className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
+                                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
                                     value={paymentForm.date}
                                     onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })}
                                     required
                                 />
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium text-gray-700 block mb-1">Payment Method</label>
-                                <select
-                                    className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm bg-white"
-                                    value={paymentForm.paymentMethod}
-                                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
-                                >
-                                    <option>Cash</option>
-                                    <option>Bank Transfer</option>
-                                    <option>UPI</option>
-                                    <option>Cheque</option>
-                                    <option>Other</option>
-                                </select>
                             </div>
                         </div>
                         <div>
@@ -1640,7 +1642,7 @@ const Inventory = ({ businessName: businessNameFallback = "SmartDhandha" }) => {
                             <input
                                 type="text"
                                 placeholder="Optional (e.g., transaction ID)"
-                                className="mt-1 w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
+                                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#66B2FF] outline-none text-sm"
                                 value={paymentForm.note}
                                 onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })}
                             />
