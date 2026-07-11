@@ -1,8 +1,9 @@
 import axios from 'axios';
+import getBaseURL from './apiClient';
 
 // Create an axios instance consistent with your project's setup
 const API = axios.create({
-  baseURL: 'https://smartbusiness-rr4o.onrender.com/api', // Base URL for all API requests
+  baseURL: getBaseURL(), // Base URL for all API requests
 });
 
 // Interceptor to add auth token to requests (if you use authentication)

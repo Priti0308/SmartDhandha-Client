@@ -1,8 +1,10 @@
 import axios from "axios";
 
+import getBaseURL from "./apiClient";
+
 // NOTE: Ensure your BASE_URL points to the correct Express server address.
 const API = axios.create({
-    baseURL: "https://smartbusiness-rr4o.onrender.com/api/auth", 
+    baseURL: getBaseURL("auth"), 
 });
 
 // --- REGISTER (Simplified) ---

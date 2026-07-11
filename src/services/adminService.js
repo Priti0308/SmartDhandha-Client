@@ -1,17 +1,14 @@
 import axios from 'axios';
+import getBaseURL from './apiClient';
 
-// --- THIS IS THE FIX ---
-// We get the token directly from "authToken", just like your authService does.
 const getToken = () => {
   return localStorage.getItem('authToken'); 
 }
 
-// Create an Axios instance for your API
-// const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const API_URL = 'https://smartbusiness-rr4o.onrender.com/api/superadmin'; 
+const API_URL = getBaseURL('admin'); 
 
 const getAuthHeaders = () => {
-  const token = getToken(); // This will now find the correct token
+  const token = getToken(); 
   return {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -23,7 +20,6 @@ const getAuthHeaders = () => {
  * Fetches the system-wide stats from the backend
  */
 export const getSystemStats = async () => {
-  // We use the base API_URL and the correct endpoint
   const response = await axios.get(`${API_URL}/stats`, getAuthHeaders());
   return response.data;
 };
@@ -50,20 +46,29 @@ export const approveUser = async (userId) => {
 };
 
 /**
- * Updates the superadmin's own settings
+ * Updates the admin's own settings
  */
 export const updateMySettings = async (settingsData) => {
-  // settingsData will be an object like { mobile, password }
   const response = await axios.patch(`${API_URL}/settings`, settingsData, getAuthHeaders());
   return response.data;
 };
+
+/**
+ * Updates a user's details by admin
+ */
+export const updateUser = async (userId, userData) => {
+  const response = await axios.patch(`${API_URL}/users/${userId}`, userData, getAuthHeaders());
+  return response.data;
+};
+
 // Bundle all functions into a single service object
-const superAdminService = {
+const adminService = {
   getSystemStats,
   getAllUsers,
   deleteUser,
   approveUser,
   updateMySettings,
+  updateUser,
 };
 
-export default superAdminService;
+export default adminService;

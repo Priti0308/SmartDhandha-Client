@@ -20,13 +20,13 @@ import Report from "./features/Reports/Reports";
 import Visitor from "./features/Visitor/Visitor";
 import Customer from "./features/Customer/Customer";
 
-// --- Import Superadmin Pages ---
-import SuperAdminDashboard, { SuperAdminSettings } from "./pages/SuperAdminDashboard";
+// --- Import Admin Pages ---
+import AdminDashboard, { AdminSettings } from "./pages/AdminDashboard";
 // import UserManagementPage from "./pages/UserManagementPage"; // You can add this next
 
 // --- Import Route Protection ---
 import PrivateRoute from "./router/PrivateRoute";
-import SuperAdminRoute from "./router/SuperAdminRoute"; // <-- IMPORT THE NEW ROUTE
+import AdminRoute from "./router/AdminRoute"; 
 
 function App() {
   return (
@@ -58,14 +58,11 @@ function App() {
           </Route>
 
           {/* ================================== */}
-          {/* Superadmin Protected Routes    */}
+          {/* Admin Protected Routes             */}
           {/* ================================== */}
-          {/* --- Superadmin Protected Routes --- */}
-          <Route element={<SuperAdminRoute />}>
-            {/* --- 2. THIS STAYS THE SAME --- */}
-            <Route path="/superadmin" element={<SuperAdminDashboard />} />
-            {/* --- 3. THIS NOW WORKS --- */}
-            <Route path="/superadmin/settings" element={<SuperAdminSettings />} />
+          <Route element={<AdminRoute />}>
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/settings" element={<AdminSettings />} />
           </Route>
 
           {/* ================================== */}

@@ -1,8 +1,9 @@
 import axios from 'axios';
+import getBaseURL from './apiClient';
 
 // Create an axios instance specifically for ledger routes
 const API = axios.create({
-  baseURL: 'https://smartbusiness-rr4o.onrender.com/api/ledger', // Use the specific module base URL
+  baseURL: getBaseURL('ledger'), // Use the specific module base URL
 });
 
 // === IMPORTANT: Add the Interceptor ===

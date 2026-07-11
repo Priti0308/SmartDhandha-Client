@@ -1,8 +1,9 @@
 import axios from "axios";
+import getBaseURL from "./apiClient";
 
 // Create an axios instance
 const API = axios.create({
-  baseURL: "https://smartbusiness-rr4o.onrender.com/api",
+  baseURL: getBaseURL(),
 });
 
 // --- Axios Interceptor ---

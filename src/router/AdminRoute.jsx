@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext'; 
 
-const SuperAdminRoute = () => {
+const AdminRoute = () => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -13,14 +13,13 @@ const SuperAdminRoute = () => {
     );
   }
 
-  // --- THIS IS THE FIX ---
-  // 1. Get the role (if user exists) and convert it to lowercase
+  // Get the role (if user exists) and convert it to lowercase
   const userRole = user ? user.role.toLowerCase() : '';
   
-  // 2. Check against the lowercase string
-  const isAuthorized = userRole === 'superadmin';
+  // Check if they are the admin
+  const isAuthorized = userRole === 'admin';
 
   return isAuthorized ? <Outlet /> : <Navigate to="/login" replace />;
 };
 
-export default SuperAdminRoute;
+export default AdminRoute;

@@ -34,8 +34,8 @@ const Login = () => {
       const userRole = decodedToken.role ? decodedToken.role.toLowerCase() : ''; 
 
       setTimeout(() => {
-        if (userRole === 'superadmin') { // Check against lowercase
-          navigate("/superadmin");
+        if (userRole === 'admin') { // Check against lowercase
+          navigate("/admin");
         } else {
           navigate("/dashboard");
         }
